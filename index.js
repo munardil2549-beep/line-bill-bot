@@ -1,6 +1,8 @@
-// index.js — LINE bot อ่านบิล ยืนยัน/แก้ไข และสรุปยอด
-try { require('dotenv').config(); } catch (_) { /* บน production ใช้ env จริง ไม่ต้องมี dotenv */ }
+// index.js — LINE bot อ่านบิลขนส่ง ยืนยัน/แก้ไข บันทึกชีท และสรุปยอด (แยกสาขา/ขนส่ง)
+try { require('dotenv').config(); } catch (_) { /* production ใช้ env จริง */ }
 
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const line = require('@line/bot-sdk');
 
@@ -13,187 +15,225 @@ const config = {
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 
-const client = new line.messagingApi.MessagingApiClient({
-  channelAccessToken: config.channelAccessToken,
-});
-const blobClient = new line.messagingApi.MessagingApiBlobClient({
-  channelAccessToken: config.channelAccessToken,
-});
+const client = new line.messagingApi.MessagingApiClient({ channelAccessToken: config.channelAccessToken });
+const blobClient = new line.messagingApi.MessagingApiBlobClient({ channelAccessToken: config.channelAccessToken });
 
-// เก็บบิลที่รอยืนยัน/แก้ไข ต่อ user (ในหน่วยความจำ — รีเซ็ตเมื่อรีสตาร์ท)
-// pending[userId] = { bill, stage: 'confirm' | 'edit' }
-const pending = {};
+// สถานะต่อผู้ใช้ (ในหน่วยความจำ — รีเซ็ตเมื่อรีสตาร์ท)
+const pendingBill = {};   // pendingBill[uid] = { bill, stage:'confirm'|'edit' }
+const summaryFlow = {};   // summaryFlow[uid] = { step:'range'|'range_text'|'group', from, to }
 
 const app = express();
-
-// health check
 app.get('/', (_req, res) => res.send('LINE bill bot is running'));
 
-// webhook
 app.post('/webhook', line.middleware(config), async (req, res) => {
-  res.status(200).end(); // ตอบ LINE ทันที แล้วค่อยประมวลผล
-  const events = req.body.events || [];
-  for (const event of events) {
+  res.status(200).end();
+  for (const event of req.body.events || []) {
     try {
       await handleEvent(event);
     } catch (err) {
       console.error('handleEvent error:', err);
-      // ใช้ push เพราะ replyToken อาจถูกใช้ไปแล้ว (เช่นข้อความ "กำลังอ่านบิล")
       const uid = event.source && event.source.userId;
-      if (uid) {
-        await pushMessage(uid, [
-          { type: 'text', text: '⚠️ เกิดข้อผิดพลาด: ' + (err.message || 'ไม่ทราบสาเหตุ') },
-        ]).catch(() => {});
-      }
+      if (uid) await pushMessage(uid, [{ type: 'text', text: '⚠️ เกิดข้อผิดพลาด: ' + (err.message || 'ไม่ทราบสาเหตุ') }]).catch(() => {});
     }
   }
 });
 
 async function handleEvent(event) {
   if (event.type !== 'message') return;
-  const userId = event.source && event.source.userId;
+  const uid = event.source && event.source.userId;
   const msg = event.message;
-
-  if (msg.type === 'image') {
-    return handleImage(event, userId, msg);
-  }
-  if (msg.type === 'text') {
-    return handleText(event, userId, msg.text.trim());
-  }
+  if (msg.type === 'image') return handleImage(event, uid, msg);
+  if (msg.type === 'text') return handleText(event, uid, msg.text.trim());
 }
 
 // ---------- รูปบิล ----------
-async function handleImage(event, userId, msg) {
+async function handleImage(event, uid, msg) {
   await safeReply(event.replyToken, [{ type: 'text', text: '📸 กำลังอ่านบิล รอสักครู่...' }]);
-
   const buffer = await downloadContent(msg.id);
   const bill = await readBill(buffer, 'image/jpeg');
-  pending[userId] = { bill, stage: 'confirm' };
-
-  await pushMessage(userId, [billSummaryMessage(bill)]);
+  delete summaryFlow[uid];
+  pendingBill[uid] = { bill, stage: 'confirm' };
+  await pushMessage(uid, [billCard(bill)]);
 }
 
 // ---------- ข้อความ ----------
-async function handleText(event, userId, text) {
-  const state = pending[userId];
-
-  // อยู่ในขั้นตอนยืนยัน/แก้ไขบิล
-  if (state) {
-    // ยืนยัน
+async function handleText(event, uid, text) {
+  // 1) อยู่ระหว่างยืนยัน/แก้ไขบิล
+  const st = pendingBill[uid];
+  if (st) {
     if (/^(ยืนยัน|ตกลง|ok|yes|✅)/i.test(text)) {
-      const billId = await sheets.appendBill(userId, state.bill);
-      delete pending[userId];
-      return safeReply(event.replyToken, [
-        { type: 'text', text: `✅ บันทึกแล้ว (รหัส ${billId})\nยอดรวม ${fmt(state.bill.total)} บาท\n\nพิมพ์ "สรุป" เพื่อดูยอดรวม หรือส่งบิลใบใหม่ได้เลย` },
-      ]);
+      const id = await sheets.appendBill(uid, st.bill);
+      delete pendingBill[uid];
+      return safeReply(event.replyToken, [{ type: 'text', text:
+        `✅ บันทึกแล้ว (รหัส ${id})\nสาขา ${st.bill.branch || '-'} · ค่าขนส่ง ${fmt(st.bill.shipping_cost)} บาท\n\nกด "รวมยอด" ดูสรุป หรือส่งบิลใบใหม่ได้เลย` }]);
     }
-    // เข้าโหมดแก้ไข
-    if (/^(แก้ไข|แก้|edit|✏️)/i.test(text) && state.stage === 'confirm') {
-      state.stage = 'edit';
-      return safeReply(event.replyToken, [
-        {
-          type: 'text',
-          text:
-            '✏️ พิมพ์สิ่งที่ต้องการแก้ เช่น:\n' +
-            'ร้าน=7-Eleven\nยอด=120\nวันที่=2026-06-10\nหมวด=อาหารและเครื่องดื่ม\nภาษี=7.85\n\n' +
-            '(แก้หลายอย่างพร้อมกันได้ คั่นด้วยขึ้นบรรทัดใหม่หรือคอมม่า)',
-        },
-      ]);
+    if (/^(แก้ไข|แก้|edit|✏️)/i.test(text) && st.stage === 'confirm') {
+      st.stage = 'edit';
+      return safeReply(event.replyToken, [{ type: 'text', text:
+        '✏️ พิมพ์สิ่งที่ต้องการแก้ (คั่นหลายอันด้วยขึ้นบรรทัด/คอมม่า) เช่น:\n' +
+        'สาขา=ยะลา\nเจ้าของงาน=ซิลมี\nชื่องาน=ผ้าม่านห้องนอน\nค่าขนส่ง=150\nวันที่=2026-06-04\nขนส่ง=ไชยรักษ์เอ็กซ์เพรส\nจำนวน=1\nวิธีเก็บเงิน=ปลายทาง' }]);
     }
-    // ยกเลิก
     if (/^(ยกเลิก|cancel)/i.test(text)) {
-      delete pending[userId];
+      delete pendingBill[uid];
       return safeReply(event.replyToken, [{ type: 'text', text: '❌ ยกเลิกบิลนี้แล้ว' }]);
     }
-    // กำลังรับข้อมูลแก้ไข
-    if (state.stage === 'edit') {
+    if (st.stage === 'edit') {
       const edits = parseEdit(text);
-      if (Object.keys(edits).length === 0) {
-        return safeReply(event.replyToken, [
-          { type: 'text', text: 'ไม่เข้าใจรูปแบบ ลองใหม่ เช่น  ยอด=120  หรือ  ร้าน=โลตัส' },
-        ]);
+      if (!Object.keys(edits).length) {
+        return safeReply(event.replyToken, [{ type: 'text', text: 'ไม่เข้าใจรูปแบบ ลองใหม่ เช่น  สาขา=ยะลา  หรือ  ค่าขนส่ง=150' }]);
       }
-      Object.assign(state.bill, edits);
-      state.stage = 'confirm';
-      return safeReply(event.replyToken, [billSummaryMessage(state.bill)]);
+      Object.assign(st.bill, edits);
+      st.stage = 'confirm';
+      return safeReply(event.replyToken, [billCard(st.bill)]);
     }
   }
 
-  // คำสั่งทั่วไป
-  const cmd = parseCommand(text);
-  if (cmd && cmd.type === 'help') {
-    return safeReply(event.replyToken, [{ type: 'text', text: helpText() }]);
-  }
-  if (cmd && cmd.type === 'summary') {
-    const s = await sheets.summarize(userId, cmd.from, cmd.to);
-    return safeReply(event.replyToken, [{ type: 'text', text: summaryText(s, cmd.from, cmd.to) }]);
-  }
+  // 2) อยู่ใน flow สรุปยอด
+  if (summaryFlow[uid]) return handleSummaryFlow(event, uid, text);
 
-  // ไม่เข้าเงื่อนไขใด
+  // 3) คำสั่งทั่วไป
+  if (/^(รวมยอด|สรุป|summary)\s*$/i.test(text)) {
+    summaryFlow[uid] = { step: 'range' };
+    return safeReply(event.replyToken, [rangeQuestion()]);
+  }
+  const cmd = parseCommand(text);
+  if (cmd && cmd.type === 'help') return safeReply(event.replyToken, [{ type: 'text', text: helpText() }]);
+  if (cmd && cmd.type === 'sheet') return safeReply(event.replyToken, [{ type: 'text', text: '🗂️ เปิดดาต้าเบส (Google Sheet):\n' + sheets.sheetUrl() }]);
+  if (cmd && cmd.type === 'recent') return safeReply(event.replyToken, [{ type: 'text', text: await recentText(uid) }]);
+  if (cmd && cmd.type === 'summary') {
+    const s = await sheets.summarize(uid, cmd.from, cmd.to, cmd.groupBy);
+    return safeReply(event.replyToken, [{ type: 'text', text: summaryText(s, cmd.from, cmd.to, cmd.groupBy) }]);
+  }
+  if (/ถ่ายรูป|ถ่ายบิล/.test(text)) return safeReply(event.replyToken, [{ type: 'text', text: '📸 ส่งรูปบิลเข้ามาได้เลย' }]);
+
   return safeReply(event.replyToken, [{ type: 'text', text: helpText() }]);
 }
 
-// ---------- ข้อความสรุปบิล + ปุ่ม ----------
-function billSummaryMessage(bill) {
-  const lines = [];
-  lines.push('🧾 ตรวจสอบข้อมูลบิล');
-  lines.push('ร้าน: ' + (bill.store || '-'));
-  lines.push('วันที่: ' + (bill.date || '-'));
-  lines.push('หมวด: ' + (bill.category || '-'));
-  if (bill.items && bill.items.length) {
-    lines.push('รายการ:');
-    for (const it of bill.items) {
-      lines.push(`  • ${it.name} x${it.qty} = ${fmt(it.price)}`);
-    }
-  }
-  if (bill.subtotal != null) lines.push('ยอดก่อนภาษี: ' + fmt(bill.subtotal));
-  lines.push('ภาษี/VAT: ' + fmt(bill.vat));
-  lines.push('💰 ยอดรวม: ' + fmt(bill.total) + ' บาท');
-  lines.push('');
-  lines.push('ถูกต้องไหม? กดยืนยัน หรือพิมพ์ "แก้ไข"');
+// ---------- flow สรุปยอด ----------
+async function handleSummaryFlow(event, uid, text) {
+  const flow = summaryFlow[uid];
+  if (/^(ยกเลิก|cancel)/i.test(text)) { delete summaryFlow[uid]; return safeReply(event.replyToken, [{ type: 'text', text: '❌ ยกเลิกการสรุป' }]); }
 
+  if (flow.step === 'range') {
+    if (/ระบุ|เอง|กำหนด/.test(text)) {
+      flow.step = 'range_text';
+      return safeReply(event.replyToken, [{ type: 'text', text: 'พิมพ์ช่วงวันที่ เช่น  1/6/2026 ถึง 15/6/2026' }]);
+    }
+    const r = parseCommand('สรุป ' + text);
+    flow.from = r.from; flow.to = r.to; flow.step = 'group';
+    return safeReply(event.replyToken, [groupQuestion(flow.from, flow.to)]);
+  }
+  if (flow.step === 'range_text') {
+    const r = parseCommand('สรุป ' + text);
+    flow.from = r.from; flow.to = r.to; flow.step = 'group';
+    return safeReply(event.replyToken, [groupQuestion(flow.from, flow.to)]);
+  }
+  if (flow.step === 'group') {
+    let groupBy = null;
+    if (/สาขา/.test(text)) groupBy = 'branch';
+    else if (/ขนส่ง|บริษัท/.test(text)) groupBy = 'courier';
+    const { from, to } = flow;
+    delete summaryFlow[uid];
+    const s = await sheets.summarize(uid, from, to, groupBy);
+    return safeReply(event.replyToken, [{ type: 'text', text: summaryText(s, from, to, groupBy) }]);
+  }
+}
+
+// ---------- ข้อความ/การ์ด ----------
+function billCard(b) {
+  const L = [];
+  L.push('🧾 ตรวจสอบบิลขนส่ง');
+  L.push('🚚 ขนส่ง: ' + (b.courier || '-'));
+  L.push('📅 วันที่: ' + (b.date || '-'));
+  L.push('🏪 สาขา: ' + (b.branch || '-'));
+  L.push('👤 เจ้าของงาน: ' + (b.job_owner || '-'));
+  L.push('📋 ชื่องาน: ' + (b.job_name || '-'));
+  L.push('📦 รายการ: ' + (b.item || '-'));
+  L.push('🔢 จำนวน: ' + (b.qty != null ? b.qty + ' ชิ้น' : '-'));
+  L.push('💰 ค่าขนส่ง: ' + fmt(b.shipping_cost) + ' บาท');
+
+  const missing = [];
+  if (!b.branch) missing.push('สาขา');
+  if (!b.job_owner) missing.push('เจ้าของงาน');
+  if (!b.job_name) missing.push('ชื่องาน');
+  L.push('');
+  if (missing.length) {
+    L.push('⚠️ ยังไม่มี: ' + missing.join(', ') + ' — พิมพ์เพิ่มได้ เช่น สาขา=ยะลา');
+  } else {
+    L.push('ถูกต้องไหม? กดยืนยัน หรือพิมพ์ "แก้ไข"');
+  }
   return {
     type: 'text',
-    text: lines.join('\n'),
-    quickReply: {
-      items: [
-        { type: 'action', action: { type: 'message', label: '✅ ยืนยัน', text: 'ยืนยัน' } },
-        { type: 'action', action: { type: 'message', label: '✏️ แก้ไข', text: 'แก้ไข' } },
-        { type: 'action', action: { type: 'message', label: '❌ ยกเลิก', text: 'ยกเลิก' } },
-      ],
-    },
+    text: L.join('\n'),
+    quickReply: { items: [
+      qrMsg('✅ ยืนยัน', 'ยืนยัน'),
+      qrMsg('✏️ แก้ไข', 'แก้ไข'),
+      qrMsg('❌ ยกเลิก', 'ยกเลิก'),
+    ] },
   };
 }
 
-function summaryText(s, from, to) {
-  if (s.count === 0) {
-    return `📊 ช่วง ${from} ถึง ${to}\nไม่พบบิลในช่วงนี้`;
+function rangeQuestion() {
+  return {
+    type: 'text',
+    text: '📊 รวมยอดค่าขนส่ง — เลือกช่วงเวลา',
+    quickReply: { items: [
+      qrMsg('เดือนนี้', 'เดือนนี้'),
+      qrMsg('เดือนที่แล้ว', 'เดือนที่แล้ว'),
+      qrMsg('7 วัน', '7 วัน'),
+      qrMsg('ระบุช่วงเอง', 'ระบุช่วงเอง'),
+    ] },
+  };
+}
+
+function groupQuestion(from, to) {
+  return {
+    type: 'text',
+    text: `ช่วง ${from} ถึง ${to}\nต้องการสรุปแบบไหน?`,
+    quickReply: { items: [
+      qrMsg('รวมทั้งหมด', 'รวมทั้งหมด'),
+      qrMsg('แยกตามสาขา', 'แยกตามสาขา'),
+      qrMsg('แยกตามขนส่ง', 'แยกตามขนส่ง'),
+    ] },
+  };
+}
+
+function summaryText(s, from, to, groupBy) {
+  if (s.count === 0) return `📊 ช่วง ${from} ถึง ${to}\nไม่พบบิลในช่วงนี้`;
+  const L = [];
+  L.push(`📊 สรุปค่าขนส่ง ${from} ถึง ${to}`);
+  L.push(`จำนวนบิล: ${s.count} ใบ · ${s.qty} ชิ้น`);
+  L.push(`💰 รวมทั้งหมด: ${fmt(s.total)} บาท`);
+  if (groupBy) {
+    L.push('');
+    L.push(groupBy === 'branch' ? '🏪 แยกตามสาขา:' : '🚚 แยกตามบริษัทขนส่ง:');
+    const arr = Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost);
+    for (const [name, g] of arr) {
+      L.push(`  • ${name}: ${fmt(g.cost)} บาท (${g.count} บิล)`);
+    }
   }
-  const lines = [];
-  lines.push(`📊 สรุปยอด ${from} ถึง ${to}`);
-  lines.push(`จำนวนบิล: ${s.count} ใบ`);
-  lines.push(`💰 ยอดรวมทั้งหมด: ${fmt(s.total)} บาท`);
-  lines.push(`ภาษีรวม: ${fmt(s.vat)} บาท`);
-  lines.push('');
-  lines.push('แยกตามหมวด:');
-  const cats = Object.entries(s.byCategory).sort((a, b) => b[1] - a[1]);
-  for (const [cat, amt] of cats) {
-    lines.push(`  • ${cat}: ${fmt(amt)}`);
-  }
-  return lines.join('\n');
+  return L.join('\n');
+}
+
+async function recentText(uid) {
+  const bills = await sheets.recentBills(uid, 5);
+  if (!bills.length) return '🗂️ ยังไม่มีบิลที่บันทึก';
+  const L = ['🗂️ บิลล่าสุด:'];
+  bills.forEach((b, i) => {
+    L.push(`${i + 1}) ${b.date || '-'} · ${b.branch || '-'} · ${b.courier || '-'} · ${fmt(b.shipping_cost)} บาท`);
+  });
+  L.push('\nเปิดทั้งหมด: ' + sheets.sheetUrl());
+  return L.join('\n');
 }
 
 function helpText() {
   return (
     '👋 วิธีใช้งาน\n\n' +
-    '1) ส่งรูปบิล → บอทจะอ่านข้อมูลให้ตรวจสอบ\n' +
-    '2) กด ✅ ยืนยัน เพื่อบันทึก หรือ ✏️ แก้ไข ถ้าข้อมูลผิด\n' +
-    '3) ดูสรุปยอด พิมพ์ได้หลายแบบ เช่น:\n' +
-    '   • สรุปวันนี้\n' +
-    '   • สรุปเดือนนี้\n' +
-    '   • สรุปเดือนที่แล้ว\n' +
-    '   • สรุป 7 วัน\n' +
-    '   • สรุป 1/6/2026 ถึง 15/6/2026'
+    '📸 ส่งรูปบิล → บอทอ่านให้ตรวจ → กดยืนยัน บันทึกลงชีท\n' +
+    '📊 พิมพ์ "รวมยอด" → เลือกช่วงเวลา แล้วเลือกแยกตามสาขา/ขนส่ง\n' +
+    '🗂️ พิมพ์ "เปิดชีท" → ลิงก์เปิดดาต้าเบส\n' +
+    '🧾 พิมพ์ "บิลล่าสุด" → ดู 5 รายการหลังสุด\n\n' +
+    'แก้ข้อมูลบิลพิมพ์ เช่น  สาขา=ยะลา  ค่าขนส่ง=150'
   );
 }
 
@@ -202,8 +242,9 @@ function fmt(n) {
   if (n == null || n === '') return '0';
   return Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 });
 }
-
-// ดาวน์โหลดเนื้อหารูปจาก LINE เป็น Buffer
+function qrMsg(label, text) {
+  return { type: 'action', action: { type: 'message', label, text } };
+}
 async function downloadContent(messageId) {
   const stream = await blobClient.getMessageContent(messageId);
   const chunks = [];
@@ -213,15 +254,49 @@ async function downloadContent(messageId) {
     stream.on('error', reject);
   });
 }
-
 async function safeReply(replyToken, messages) {
   if (!replyToken) return;
   return client.replyMessage({ replyToken, messages });
 }
-
 async function pushMessage(to, messages) {
   return client.pushMessage({ to, messages });
 }
 
+// ---------- Rich Menu (เมนู 3 ปุ่มล่างจอ) ----------
+async function ensureRichMenu() {
+  if (!config.channelAccessToken) return;
+  try {
+    if (process.env.REBUILD_RICHMENU === '1') {
+      const list = await client.getRichMenuList().catch(() => ({ richmenus: [] }));
+      for (const rm of list.richmenus || []) await client.deleteRichMenu(rm.richMenuId).catch(() => {});
+    } else {
+      const def = await client.getDefaultRichMenuId().catch(() => null);
+      if (def && def.richMenuId) { console.log('rich menu already set'); return; }
+    }
+    const richMenu = {
+      size: { width: 2500, height: 843 },
+      selected: true,
+      name: 'bill-menu',
+      chatBarText: 'เมนู',
+      areas: [
+        { bounds: { x: 0, y: 0, width: 833, height: 843 }, action: { type: 'message', text: 'รวมยอด' } },
+        { bounds: { x: 833, y: 0, width: 834, height: 843 }, action: { type: 'uri', uri: sheets.sheetUrl() } },
+        { bounds: { x: 1667, y: 0, width: 833, height: 843 }, action: { type: 'camera', label: 'ถ่ายรูป' } },
+      ],
+    };
+    const created = await client.createRichMenu(richMenu);
+    const id = created.richMenuId;
+    const img = fs.readFileSync(path.join(__dirname, 'richmenu.png'));
+    await blobClient.setRichMenuImage(id, new Blob([img], { type: 'image/png' }));
+    await client.setDefaultRichMenu(id);
+    console.log('✅ rich menu set:', id);
+  } catch (e) {
+    console.error('ensureRichMenu error:', e.message);
+  }
+}
+
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`✅ LINE bill bot listening on :${port}`));
+app.listen(port, () => {
+  console.log(`✅ LINE bill bot listening on :${port}`);
+  ensureRichMenu();
+});

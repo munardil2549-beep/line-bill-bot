@@ -14,18 +14,13 @@ services:
       - key: OCR_SPACE_API_KEY
         sync: false
       - key: OCR_SPACE_LANGUAGE
-        value: tha
+        value: auto
       - key: OCR_SPACE_ENGINE
-        value: "1"
+        value: "2"
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
       - key: GOOGLE_SHEET_ID
         sync: false
-      - key: GOOGLE_SHEET_NAME
-        value: Bills
-      - key: GOOGLE_SERVICE_ACCOUNT_JSON
-        sync: false
-      - key: TZ
-        value: Asia/Bangkok
+   
