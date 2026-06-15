@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: line-bill-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: GOOGLE_SHEET_NAME
+        value: Bills
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: TZ
+        value: Asia/Bangkok
