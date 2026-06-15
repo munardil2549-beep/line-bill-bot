@@ -4,7 +4,7 @@ try { require('dotenv').config(); } catch (_) { /* บน production ใช้ e
 const express = require('express');
 const line = require('@line/bot-sdk');
 
-const { readBill } = require('./lib/gemini');
+const { readBill } = require('./lib/reader');
 const sheets = require('./lib/sheets');
 const { parseCommand, parseEdit } = require('./lib/parser');
 
@@ -27,7 +27,7 @@ const pending = {};
 const app = express();
 
 // health check
-app.get('/', (_req, res) => res.send('LINE bill bot is running ✅'));
+app.get('/', (_req, res) => res.send('LINE bill bot is running'));
 
 // webhook
 app.post('/webhook', line.middleware(config), async (req, res) => {
@@ -38,8 +38,10 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       await handleEvent(event);
     } catch (err) {
       console.error('handleEvent error:', err);
-      if (event.replyToken) {
-        await safeReply(event.replyToken, [
+      // ใช้ push เพราะ replyToken อาจถูกใช้ไปแล้ว (เช่นข้อความ "กำลังอ่านบิล")
+      const uid = event.source && event.source.userId;
+      if (uid) {
+        await pushMessage(uid, [
           { type: 'text', text: '⚠️ เกิดข้อผิดพลาด: ' + (err.message || 'ไม่ทราบสาเหตุ') },
         ]).catch(() => {});
       }

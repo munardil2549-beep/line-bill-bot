@@ -1,7 +1,7 @@
 {
   "name": "line-bill-bot",
   "version": "1.0.0",
-  "description": "LINE bot อ่านบิลจากรูปภาพ ยืนยัน/แก้ไขข้อมูล และสรุปยอดตามช่วงวันที่ (Gemini Vision + Google Sheets)",
+  "description": "LINE bot อ่านบิลจากรูป ยืนยัน/แก้ไขข้อมูล และสรุปยอดตามช่วงวันที่ (OCR.space + Groq + Google Sheets)",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@line/bot-sdk": "^9.5.0",
-    "@google/generative-ai": "^0.21.0",
+    "express": "^4.21.2",
     "googleapis": "^144.0.0",
-    "express": "^4.21.2"
+    "jimp": "^0.22.12"
   }
 }

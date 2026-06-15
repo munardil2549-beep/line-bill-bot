@@ -11,10 +11,16 @@ services:
         sync: false
       - key: LINE_CHANNEL_SECRET
         sync: false
-      - key: GEMINI_API_KEY
+      - key: OCR_SPACE_API_KEY
         sync: false
-      - key: GEMINI_MODEL
-        value: gemini-2.0-flash
+      - key: OCR_SPACE_LANGUAGE
+        value: tha
+      - key: OCR_SPACE_ENGINE
+        value: "1"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
       - key: GOOGLE_SHEET_ID
         sync: false
       - key: GOOGLE_SHEET_NAME
