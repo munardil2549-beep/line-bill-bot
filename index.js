@@ -214,14 +214,23 @@ function groupQuestion(from, to) {
 }
 function summaryText(s, from, to, groupBy) {
   if (s.count === 0) return `📊 ช่วง ${from} ถึง ${to}\nไม่พบบิลในช่วงนี้`;
+  const gkey = (b) => (b[groupBy] || '(ไม่ระบุ)').toString().trim() || '(ไม่ระบุ)';
   const L = [`📊 สรุปค่าขนส่ง ${from} ถึง ${to}`, `จำนวนบิล: ${s.count} ใบ · ${s.qty} ชิ้น`, `💰 รวมทั้งหมด: ${fmt(s.total)} บาท`];
   if (groupBy) {
     L.push('', groupBy === 'branch' ? '🏪 แยกตามสาขา:' : '🚚 แยกตามบริษัทขนส่ง:');
     for (const [name, g] of Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost)) {
-      L.push(`  • ${name}: ${fmt(g.cost)} บาท (${g.count} บิล)`);
+      L.push(`▸ ${name}: ${fmt(g.cost)} บาท (${g.count} บิล)`);
+      for (const b of s.bills.filter((x) => gkey(x) === name)) {
+        L.push(`   • ${b.job_owner || '-'} (${b.date || '-'}) — ${fmt(b.shipping_cost)}`);
+      }
     }
+  } else {
+    L.push('', 'รายการ:');
+    for (const b of s.bills) L.push(`• ${b.date || '-'} · ${b.branch || '-'} · ${b.job_owner || '-'} — ${fmt(b.shipping_cost)}`);
   }
-  return L.join('\n');
+  let out = L.join('\n');
+  if (out.length > 4800) out = out.slice(0, 4700) + '\n…(ตัดบางส่วน ดูทั้งหมดในชีท)';
+  return out;
 }
 async function recentText(uid) {
   const bills = await sheets.recentBills(uid, 5);

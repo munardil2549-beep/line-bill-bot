@@ -4,30 +4,30 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>แก้ไขข้อมูลบิล</title>
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edit/2/sdk.js" onerror="window.__liffFailed=true"></script>
 <style>
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,'Sarabun',sans-serif;background:#f1f5f9;color:#0f172a}
-  .wrap{max-width:520px;margin:0 auto;padding:18px 16px 96px}
+  .wrap{max-width:520px;margin:0 auto;padding:18px 16px 28px}
   h1{font-size:20px;margin:6px 0 14px}
   .field{margin-bottom:13px}
   label{display:block;font-size:13.5px;font-weight:700;margin-bottom:5px;color:#334155}
-  input,select{width:100%;padding:11px 12px;border:1.5px solid #cbd5e1;border-radius:11px;font-size:16px;background:#fff}
+  input,select{width:100%;padding:12px;border:1.5px solid #cbd5e1;border-radius:11px;font-size:16px;background:#fff}
   input:focus,select:focus{outline:none;border-color:#4A90D9}
   .row{display:flex;gap:10px}.row>.field{flex:1}
-  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2e8f0;padding:12px 16px;display:flex;gap:10px;max-width:520px;margin:0 auto}
-  button{flex:1;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:800;cursor:pointer}
-  .save{background:#3BA55C;color:#fff}.cancel{background:#e2e8f0;color:#334155;flex:0 0 110px}
-  .msg{text-align:center;padding:40px 20px;color:#64748b}
-  .hint{font-size:12px;color:#94a3b8;margin-top:2px}
-  .ok{text-align:center;padding:48px 20px;color:#16a34a;font-size:20px;font-weight:800}
+  .bar{display:flex;gap:10px;margin-top:8px}
+  button{flex:1;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:800;cursor:pointer}
+  .save{background:#3BA55C;color:#fff}.cancel{background:#e2e8f0;color:#334155;flex:0 0 100px}
+  .msg{text-align:center;padding:48px 20px;color:#64748b}
+  .hint{font-size:11.5px;color:#94a3b8;margin-top:3px}
+  .ok{text-align:center;padding:60px 20px;color:#16a34a;font-size:22px;font-weight:800}
+  .ok span{display:block;font-size:14px;color:#64748b;font-weight:400;margin-top:8px}
 </style>
 </head>
 <body>
 <div class="wrap" id="form" style="display:none">
   <h1>✏️ แก้ไขข้อมูลบิล</h1>
   <div class="row">
-    <div class="field"><label>วันที่</label><input id="date" placeholder="2026-05-22"><div class="hint">ปี-เดือน-วัน</div></div>
+    <div class="field"><label>วันที่</label><input id="date" type="date"><div class="hint">แตะเพื่อเลือกจากปฏิทิน</div></div>
     <div class="field"><label>ค่าขนส่ง (บาท)</label><input id="shipping_cost" inputmode="decimal" placeholder="150"></div>
   </div>
   <div class="field"><label>ร้านสาขา</label>
@@ -41,9 +41,17 @@
     </datalist>
   </div>
   <div class="field"><label>เจ้าของงาน / ชื่องาน</label><input id="job_owner" placeholder="เช่น คุณซ้อง"></div>
-  <div class="field"><label>บริษัทผ้า</label><input id="fabric_company" placeholder="เช่น Nava"></div>
+  <div class="field"><label>บริษัทผ้า</label>
+    <input id="fabric_company" list="fabrics" placeholder="เลือกหรือพิมพ์">
+    <datalist id="fabrics">
+      <option>Nava</option><option>PASAYA</option><option>SB Furniture</option><option>Toscana</option>
+    </datalist>
+  </div>
   <div class="row">
-    <div class="field"><label>บริษัทขนส่ง</label><input id="courier" placeholder="เช่น PAT, ไชยรักษ์"></div>
+    <div class="field"><label>บริษัทขนส่ง</label>
+      <input id="courier" list="couriers" placeholder="เลือกหรือพิมพ์">
+      <datalist id="couriers"><option>PAT</option><option>ภัทรขนส่ง</option><option>ไชยรักษ์เอ็กซ์เพรส</option></datalist>
+    </div>
     <div class="field"><label>เลขที่บิล</label><input id="bill_no" placeholder="1195"></div>
   </div>
   <div class="row">
@@ -53,15 +61,16 @@
   <div class="field"><label>วิธีเก็บเงิน</label>
     <select id="payment"><option value="">-</option><option>เก็บปลายทาง</option><option>เก็บต้นทาง</option><option>เครดิต</option></select>
   </div>
+  <div class="bar">
+    <button class="cancel" onclick="closeWin()">ปิด</button>
+    <button class="save" id="saveBtn" onclick="save()">💾 บันทึกลงชีท</button>
+  </div>
 </div>
 <div class="msg" id="msg">กำลังโหลด…</div>
-<div class="ok" id="ok" style="display:none">✅ บันทึกแล้ว<br><span style="font-size:14px;color:#64748b;font-weight:400">ปิดหน้าต่างนี้ได้เลย กลับไปดูในแชท</span></div>
-<div class="bar" id="bar" style="display:none">
-  <button class="cancel" onclick="closeWin()">ปิด</button>
-  <button class="save" id="saveBtn" onclick="save()">💾 บันทึกลงชีท</button>
-</div>
+<div class="ok" id="ok" style="display:none">✅ บันทึกแล้ว<span>ปิดหน้าต่างนี้ (กดเครื่องหมาย ✕ มุมบน) กลับไปดูในแชทได้เลย</span></div>
 
 <script>
+// ฟอร์มนี้ใช้ token ของระบบเอง ไม่ต้องพึ่ง LIFF SDK (กันบั๊ก token หลุด/ข้อมูลหาย)
 const FIELDS=['date','branch','job_owner','fabric_company','courier','bill_no','item','qty','shipping_cost','payment'];
 let token='';
 function getToken(){
@@ -73,24 +82,18 @@ function getToken(){
 }
 function setVal(id,v){ const el=document.getElementById(id); if(el) el.value=(v==null?'':v); }
 function getVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
-function show(id){ document.getElementById(id).style.display=(id==='form'||id==='bar')?(id==='bar'?'flex':'block'):'block'; }
-function hide(id){ document.getElementById(id).style.display='none'; }
 
-async function initLiff(){
-  // ใช้ liff ถ้ามี (ไม่บังคับ) — ฟอร์มทำงานได้แม้ SDK โหลดไม่ขึ้น
-  try { if(window.liff && !window.__liffFailed){ await liff.init({ liffId:'__LIFF_ID__' }); } } catch(e){ console.warn('liff init skip:', e&&e.message); }
-}
 async function start(){
   token=getToken();
   if(!token){ document.getElementById('msg').textContent='ไม่พบ token — กรุณาเปิดผ่านปุ่มแก้ไขในไลน์'; return; }
-  await initLiff();
   try{
     const r=await fetch('/api/bill?t='+encodeURIComponent(token));
     const data=await r.json();
     if(!data.ok){ document.getElementById('msg').textContent=data.error||'โหลดข้อมูลไม่ได้'; return; }
     const b=data.bill||{};
     FIELDS.forEach(f=>setVal(f,b[f]));
-    hide('msg'); show('form'); show('bar');
+    document.getElementById('msg').style.display='none';
+    document.getElementById('form').style.display='block';
   }catch(e){ document.getElementById('msg').textContent='ผิดพลาด: '+e.message; }
 }
 async function save(){
@@ -99,14 +102,11 @@ async function save(){
   try{
     const r=await fetch('/api/bill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:token,fields})});
     const data=await r.json();
-    if(data.ok){ done(); } else { alert(data.error||'บันทึกไม่สำเร็จ'); btn.disabled=false; btn.textContent='💾 บันทึกลงชีท'; }
+    if(data.ok){ document.getElementById('form').style.display='none'; document.getElementById('ok').style.display='block'; }
+    else { alert(data.error||'บันทึกไม่สำเร็จ'); btn.disabled=false; btn.textContent='💾 บันทึกลงชีท'; }
   }catch(e){ alert('ผิดพลาด: '+e.message); btn.disabled=false; btn.textContent='💾 บันทึกลงชีท'; }
 }
-function done(){
-  if(window.liff && liff.closeWindow && !window.__liffFailed){ try{ liff.closeWindow(); return; }catch(e){} }
-  hide('form'); hide('bar'); document.getElementById('ok').style.display='block';
-}
-function closeWin(){ if(window.liff && liff.closeWindow && !window.__liffFailed){ try{ liff.closeWindow(); return; }catch(e){} } history.back(); }
+function closeWin(){ history.back(); }
 start();
 </script>
 </body>
