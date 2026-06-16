@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>แก้ไขข้อมูลบิล</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edit/2/sdk.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,'Sarabun',sans-serif;background:#f1f5f9;color:#0f172a}
+  .wrap{max-width:520px;margin:0 auto;padding:18px 16px 96px}
+  h1{font-size:20px;margin:6px 0 14px}
+  .field{margin-bottom:13px}
+  label{display:block;font-size:13.5px;font-weight:700;margin-bottom:5px;color:#334155}
+  input,select{width:100%;padding:11px 12px;border:1.5px solid #cbd5e1;border-radius:11px;font-size:16px;background:#fff}
+  input:focus,select:focus{outline:none;border-color:#4A90D9}
+  .row{display:flex;gap:10px}
+  .row>.field{flex:1}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2e8f0;padding:12px 16px;display:flex;gap:10px;max-width:520px;margin:0 auto}
+  button{flex:1;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:800;cursor:pointer}
+  .save{background:#3BA55C;color:#fff}
+  .cancel{background:#e2e8f0;color:#334155;flex:0 0 110px}
+  .msg{text-align:center;padding:40px 20px;color:#64748b}
+  .hint{font-size:12px;color:#94a3b8;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="wrap" id="form" style="display:none">
+  <h1>✏️ แก้ไขข้อมูลบิล</h1>
+  <div class="row">
+    <div class="field"><label>วันที่</label><input id="date" placeholder="2026-05-22"><div class="hint">รูปแบบ ปี-เดือน-วัน</div></div>
+    <div class="field"><label>ค่าขนส่ง (บาท)</label><input id="shipping_cost" inputmode="decimal" placeholder="150"></div>
+  </div>
+  <div class="field"><label>ร้านสาขา</label>
+    <input id="branch" list="branches" placeholder="เลือกหรือพิมพ์">
+    <datalist id="branches">
+      <option>ยะลา</option><option>ปัตตานี</option><option>หาดใหญ่</option><option>เบตง</option>
+      <option>ธารโต</option><option>สายบุรี</option><option>ตากใบ</option><option>หนองจิก</option>
+      <option>สุไหงปาดี</option><option>สุไหงโกลก</option><option>มายอ</option><option>ตันหยงมัส</option>
+      <option>ระนอง</option><option>นิบงบารู</option><option>เจาะกือแย</option><option>ทรายขาว</option>
+      <option>ตลาดเก่า</option><option>นราธิวาส</option><option>รือเสาะ</option><option>กะสือ</option>
+    </datalist>
+  </div>
+  <div class="field"><label>เจ้าของงาน / ชื่องาน</label><input id="job_owner" placeholder="เช่น คุณซ้อง"></div>
+  <div class="field"><label>บริษัทผ้า</label><input id="fabric_company" placeholder="เช่น Nava"></div>
+  <div class="row">
+    <div class="field"><label>บริษัทขนส่ง</label><input id="courier" placeholder="เช่น PAT, ไชยรักษ์"></div>
+    <div class="field"><label>เลขที่บิล</label><input id="bill_no" placeholder="1195"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>รายการสินค้า</label><input id="item" placeholder="ผ้าม่าน"></div>
+    <div class="field"><label>จำนวน (ชิ้น)</label><input id="qty" inputmode="numeric" placeholder="1"></div>
+  </div>
+  <div class="field"><label>วิธีเก็บเงิน</label>
+    <select id="payment">
+      <option value="">-</option>
+      <option>เก็บปลายทาง</option><option>เก็บต้นทาง</option><option>เครดิต</option>
+    </select>
+  </div>
+</div>
+<div class="msg" id="msg">กำลังโหลด…</div>
+<div class="bar" id="bar" style="display:none">
+  <button class="cancel" onclick="closeWin()">ปิด</button>
+  <button class="save" id="saveBtn" onclick="save()">💾 บันทึกลงชีท</button>
+</div>
+
+<script>
+const FIELDS = ['date','branch','job_owner','fabric_company','courier','bill_no','item','qty','shipping_cost','payment'];
+let token = '';
+
+function getToken(){
+  const q = new URLSearchParams(location.search);
+  if (q.get('t')) return q.get('t');
+  // เผื่อ LIFF ห่อ query ไว้ใน liff.state
+  const st = q.get('liff.state');
+  if (st) { try { return new URLSearchParams(st.replace(/^\?/, '')).get('t') || ''; } catch(e){} }
+  return '';
+}
+function setVal(id,v){ const el=document.getElementById(id); if(el) el.value = (v==null?'':v); }
+function getVal(id){ const el=document.getElementById(id); return el ? el.value.trim() : ''; }
+
+async function start(){
+  try{
+    await liff.init({ liffId: '__LIFF_ID__' });
+    token = getToken();
+    if(!token){ document.getElementById('msg').textContent='ไม่พบ token (เปิดผ่านปุ่มแก้ไขในไลน์)'; return; }
+    const r = await fetch('/api/bill?t=' + encodeURIComponent(token));
+    const data = await r.json();
+    if(!data.ok){ document.getElementById('msg').textContent = data.error || 'โหลดข้อมูลไม่ได้'; return; }
+    const b = data.bill || {};
+    FIELDS.forEach(f => setVal(f, b[f]));
+    document.getElementById('msg').style.display='none';
+    document.getElementById('form').style.display='block';
+    document.getElementById('bar').style.display='flex';
+  }catch(e){
+    document.getElementById('msg').textContent = 'ผิดพลาด: ' + e.message;
+  }
+}
+async function save(){
+  const btn=document.getElementById('saveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก…';
+  const fields={}; FIELDS.forEach(f => fields[f]=getVal(f));
+  try{
+    const r = await fetch('/api/bill', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:token,fields})});
+    const data = await r.json();
+    if(data.ok){ closeWin(); }
+    else { alert(data.error||'บันทึกไม่สำเร็จ'); btn.disabled=false; btn.textContent='💾 บันทึกลงชีท'; }
+  }catch(e){ alert('ผิดพลาด: '+e.message); btn.disabled=false; btn.textContent='💾 บันทึกลงชีท'; }
+}
+function closeWin(){ if(liff && liff.closeWindow) liff.closeWindow(); else history.back(); }
+start();
+</script>
+</body>
+</html>

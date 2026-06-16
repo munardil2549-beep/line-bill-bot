@@ -68,6 +68,7 @@
 | `GOOGLE_SHEET_ID` | ID ของชีท (ใช้ทำลิงก์ปุ่มเปิดชีทด้วย) |
 | `GOOGLE_SHEET_NAME` | `Bills` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | เนื้อหาไฟล์ JSON ทั้งก้อน |
+| `LIFF_ID` | จากการสร้าง LIFF app (ดูคู่มือ) |
 | `TZ` | `Asia/Bangkok` |
 | `REBUILD_RICHMENU` | (ไม่บังคับ) ใส่ `1` เมื่ออยากสร้างเมนูใหม่ |
 
