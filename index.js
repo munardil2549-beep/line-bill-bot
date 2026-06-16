@@ -24,6 +24,12 @@ const pendingBill = {};   // pendingBill[uid] = { bill, stage }
 const summaryFlow = {};   // summaryFlow[uid] = { step, from, to }
 const editTokens = {};    // editTokens[token] = { uid, exp }
 
+// ล้างบิลที่รอตรวจ + ปิดลิงก์แก้ไขเก่าทั้งหมดของ user (กันบันทึกซ้ำ)
+function clearUser(uid) {
+  delete pendingBill[uid];
+  for (const k of Object.keys(editTokens)) if (editTokens[k].uid === uid) delete editTokens[k];
+}
+
 const app = express();
 app.get('/', (_req, res) => res.send('LINE bill bot is running'));
 
@@ -54,8 +60,7 @@ app.post('/api/bill', express.json(), async (req, res) => {
     if (!uid) return res.status(403).json({ ok: false, error: 'token หมดอายุ' });
     const bill = normalizeBill(fields || {});
     const id = await sheets.appendBill(uid, bill);
-    delete pendingBill[uid];
-    delete editTokens[t];
+    clearUser(uid);
     await pushMessage(uid, [{ type: 'text', text: savedText(id, bill) }]).catch(() => {});
     res.json({ ok: true, billId: id });
   } catch (e) {
@@ -101,7 +106,7 @@ async function handleText(event, uid, text) {
   if (st) {
     if (/^(ยืนยัน|ตกลง|ok|yes|✅)/i.test(text)) {
       const id = await sheets.appendBill(uid, st.bill);
-      delete pendingBill[uid];
+      clearUser(uid);
       return safeReply(event.replyToken, [{ type: 'text', text: savedText(id, st.bill) }]);
     }
     if (/^(แก้ไข|แก้|edit|✏️)/i.test(text) && st.stage === 'confirm') {
