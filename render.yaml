@@ -28,6 +28,12 @@ services:
         value: Bills
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
       - key: LIFF_ID
         sync: false
       - key: TZ

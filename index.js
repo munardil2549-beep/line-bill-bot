@@ -10,6 +10,7 @@ const line = require('@line/bot-sdk');
 const { readBill } = require('./lib/reader');
 const sheets = require('./lib/sheets');
 const { parseCommand, parseEdit } = require('./lib/parser');
+const upload = require('./lib/upload');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -28,6 +29,20 @@ const editTokens = {};    // editTokens[token] = { uid, exp }
 function clearUser(uid) {
   delete pendingBill[uid];
   for (const k of Object.keys(editTokens)) if (editTokens[k].uid === uid) delete editTokens[k];
+}
+
+// บันทึกบิล: อัปโหลดรูป (ถ้ามี+ตั้งค่า Cloudinary) -> เขียนชีท -> ล้าง state
+async function saveBill(uid, bill, imageBuffer) {
+  if (imageBuffer) {
+    try {
+      const folder = (bill.date && /^\d{4}-\d{2}/.test(bill.date)) ? bill.date.slice(0, 7) : 'misc';
+      const url = await upload.uploadImage(imageBuffer, folder);
+      if (url) bill.image_url = url;
+    } catch (e) { console.error('upload image:', e.message); }
+  }
+  const id = await sheets.appendBill(uid, bill);
+  clearUser(uid);
+  return id;
 }
 
 const app = express();
@@ -59,8 +74,8 @@ app.post('/api/bill', express.json(), async (req, res) => {
     const uid = tokenUid(t);
     if (!uid) return res.status(403).json({ ok: false, error: 'token หมดอายุ' });
     const bill = normalizeBill(fields || {});
-    const id = await sheets.appendBill(uid, bill);
-    clearUser(uid);
+    const imageBuffer = (pendingBill[uid] || {}).imageBuffer;
+    const id = await saveBill(uid, bill, imageBuffer);
     await pushMessage(uid, [{ type: 'text', text: savedText(id, bill) }]).catch(() => {});
     res.json({ ok: true, billId: id });
   } catch (e) {
@@ -96,7 +111,7 @@ async function handleImage(event, uid, msg) {
   const buffer = await downloadContent(msg.id);
   const bill = await readBill(buffer, 'image/jpeg');
   delete summaryFlow[uid];
-  pendingBill[uid] = { bill, stage: 'confirm' };
+  pendingBill[uid] = { bill, stage: 'confirm', imageBuffer: buffer };
   await pushMessage(uid, [billCard(uid, bill)]);
 }
 
@@ -105,8 +120,7 @@ async function handleText(event, uid, text) {
   const st = pendingBill[uid];
   if (st) {
     if (/^(ยืนยัน|ตกลง|ok|yes|✅)/i.test(text)) {
-      const id = await sheets.appendBill(uid, st.bill);
-      clearUser(uid);
+      const id = await saveBill(uid, st.bill, st.imageBuffer);
       return safeReply(event.replyToken, [{ type: 'text', text: savedText(id, st.bill) }]);
     }
     if (/^(แก้ไข|แก้|edit|✏️)/i.test(text) && st.stage === 'confirm') {
@@ -187,6 +201,7 @@ function billCard(uid, b) {
   L.push('🏪 สาขา: ' + (b.branch || '-'));
   L.push('👤 เจ้าของงาน: ' + (b.job_owner || '-'));
   L.push('🧵 บริษัทผ้า: ' + (b.fabric_company || '-'));
+  if (b.fabric_code) L.push('🏷️ รหัสผ้า: ' + b.fabric_code);
   L.push('📦 รายการ: ' + (b.item || '-'));
   L.push('🔢 จำนวน: ' + (b.qty != null ? b.qty + ' ชิ้น' : '-'));
   L.push('💰 ค่าขนส่ง: ' + fmt(b.shipping_cost) + ' บาท');
@@ -220,18 +235,19 @@ function groupQuestion(from, to) {
 function summaryText(s, from, to, groupBy) {
   if (s.count === 0) return `📊 ช่วง ${from} ถึง ${to}\nไม่พบบิลในช่วงนี้`;
   const gkey = (b) => (b[groupBy] || '(ไม่ระบุ)').toString().trim() || '(ไม่ระบุ)';
-  const L = [`📊 สรุปค่าขนส่ง ${from} ถึง ${to}`, `จำนวนบิล: ${s.count} ใบ · ${s.qty} ชิ้น`, `💰 รวมทั้งหมด: ${fmt(s.total)} บาท`];
+  const byDate = [...s.bills].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const L = [`📊 สรุปค่าขนส่ง ${from} ถึง ${to}`, `จำนวนบิล: ${s.count} ใบ`, `💰 รวมค่าขนส่ง: ${fmt(s.total)} บาท`];
   if (groupBy) {
     L.push('', groupBy === 'branch' ? '🏪 แยกตามสาขา:' : '🚚 แยกตามบริษัทขนส่ง:');
     for (const [name, g] of Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost)) {
       L.push(`▸ ${name}: ${fmt(g.cost)} บาท (${g.count} บิล)`);
-      for (const b of s.bills.filter((x) => gkey(x) === name)) {
-        L.push(`   • ${b.job_owner || '-'} (${b.date || '-'}) — ${fmt(b.shipping_cost)}`);
+      for (const b of byDate.filter((x) => gkey(x) === name)) {
+        L.push(`   • ${b.date || '-'} · ${b.job_owner || '-'} — ${fmt(b.shipping_cost)}`);
       }
     }
   } else {
-    L.push('', 'รายการ:');
-    for (const b of s.bills) L.push(`• ${b.date || '-'} · ${b.branch || '-'} · ${b.job_owner || '-'} — ${fmt(b.shipping_cost)}`);
+    L.push('', 'รายการ (เรียงตามวันที่):');
+    for (const b of byDate) L.push(`• ${b.date || '-'} · ${b.branch || '-'} · ${b.job_owner || '-'} — ${fmt(b.shipping_cost)}`);
   }
   let out = L.join('\n');
   if (out.length > 4800) out = out.slice(0, 4700) + '\n…(ตัดบางส่วน ดูทั้งหมดในชีท)';
@@ -259,8 +275,10 @@ function num(v) { const n = parseFloat(String(v).replace(/[, ฿]/g, '')); retur
 function normalizeBill(f) {
   return {
     date: f.date || null, branch: f.branch || null, job_owner: f.job_owner || null,
-    fabric_company: f.fabric_company || null, courier: f.courier || null, bill_no: f.bill_no || null,
+    fabric_company: f.fabric_company || null, fabric_code: f.fabric_code || null,
+    courier: f.courier || null, bill_no: f.bill_no || null,
     item: f.item || null, qty: num(f.qty), shipping_cost: num(f.shipping_cost), payment: f.payment || null,
+    image_url: f.image_url || null,
   };
 }
 async function downloadContent(messageId) {

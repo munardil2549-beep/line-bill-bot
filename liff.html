@@ -19,6 +19,7 @@
   .save{background:#3BA55C;color:#fff}.cancel{background:#e2e8f0;color:#334155;flex:0 0 100px}
   .msg{text-align:center;padding:48px 20px;color:#64748b}
   .hint{font-size:11.5px;color:#94a3b8;margin-top:3px}
+  .codebtn{width:auto;display:inline-block;background:#fff;border:1.5px dashed #94a3b8;color:#475569;border-radius:11px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer}
   .ok{text-align:center;padding:60px 20px;color:#16a34a;font-size:22px;font-weight:800}
   .ok span{display:block;font-size:14px;color:#64748b;font-weight:400;margin-top:8px}
 </style>
@@ -44,8 +45,14 @@
   <div class="field"><label>บริษัทผ้า</label>
     <input id="fabric_company" list="fabrics" placeholder="เลือกหรือพิมพ์">
     <datalist id="fabrics">
-      <option>Nava</option><option>PASAYA</option><option>SB Furniture</option><option>Toscana</option>
+      <option>พีผ้าม่าน</option><option>หยาซิง</option><option>Nava</option><option>A&amp;T</option>
     </datalist>
+  </div>
+  <div class="field">
+    <button type="button" class="codebtn" id="codeBtn" onclick="toggleCode()">🏷️ + ใส่รหัสผ้า</button>
+    <div id="codeWrap" style="display:none;margin-top:8px">
+      <input id="fabric_code" placeholder="รหัสผ้า เช่น NV-204">
+    </div>
   </div>
   <div class="row">
     <div class="field"><label>บริษัทขนส่ง</label>
@@ -55,7 +62,10 @@
     <div class="field"><label>เลขที่บิล</label><input id="bill_no" placeholder="1195"></div>
   </div>
   <div class="row">
-    <div class="field"><label>รายการสินค้า</label><input id="item" placeholder="ผ้าม่าน"></div>
+    <div class="field"><label>รายการสินค้า</label>
+      <input id="item" list="items" placeholder="ผ้าม่าน">
+      <datalist id="items"><option>ผ้าม่าน</option><option>ผ้าม่าน 1 ม้วน</option><option>ผ้าม่าน 1 ห่อ</option><option>ผ้าม่าน + อุปกรณ์</option><option>อุปกรณ์</option></datalist>
+    </div>
     <div class="field"><label>จำนวน (ชิ้น)</label><input id="qty" inputmode="numeric" placeholder="1"></div>
   </div>
   <div class="field"><label>วิธีเก็บเงิน</label>
@@ -71,7 +81,7 @@
 
 <script>
 // ฟอร์มนี้ใช้ token ของระบบเอง ไม่ต้องพึ่ง LIFF SDK (กันบั๊ก token หลุด/ข้อมูลหาย)
-const FIELDS=['date','branch','job_owner','fabric_company','courier','bill_no','item','qty','shipping_cost','payment'];
+const FIELDS=['date','branch','job_owner','fabric_company','fabric_code','courier','bill_no','item','qty','shipping_cost','payment'];
 let token='';
 function getToken(){
   const q=new URLSearchParams(location.search);
@@ -92,6 +102,7 @@ async function start(){
     if(!data.ok){ document.getElementById('msg').textContent=data.error||'โหลดข้อมูลไม่ได้'; return; }
     const b=data.bill||{};
     FIELDS.forEach(f=>setVal(f,b[f]));
+    if(getVal('fabric_code')){ document.getElementById('codeWrap').style.display='block'; document.getElementById('codeBtn').style.display='none'; }
     document.getElementById('msg').style.display='none';
     document.getElementById('form').style.display='block';
   }catch(e){ document.getElementById('msg').textContent='ผิดพลาด: '+e.message; }
@@ -106,6 +117,7 @@ async function save(){
     else { alert(data.error||'บันทึกไม่สำเร็จ'); btn.disabled=false; btn.textContent='💾 บันทึกลงชีท'; }
   }catch(e){ alert('ผิดพลาด: '+e.message); btn.disabled=false; btn.textContent='💾 บันทึกลงชีท'; }
 }
+function toggleCode(){ document.getElementById('codeWrap').style.display='block'; document.getElementById('codeBtn').style.display='none'; document.getElementById('fabric_code').focus(); }
 function closeWin(){ history.back(); }
 start();
 </script>

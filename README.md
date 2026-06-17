@@ -68,7 +68,10 @@
 | `GOOGLE_SHEET_ID` | ID ของชีท (ใช้ทำลิงก์ปุ่มเปิดชีทด้วย) |
 | `GOOGLE_SHEET_NAME` | `Bills` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | เนื้อหาไฟล์ JSON ทั้งก้อน |
-| `LIFF_ID` | จากการสร้าง LIFF app (ดูคู่มือ) |
+| `CLOUDINARY_CLOUD_NAME` | (ไม่บังคับ) เก็บรูปบิล — จาก cloudinary.com |
+| `CLOUDINARY_API_KEY` | (ไม่บังคับ) |
+| `CLOUDINARY_API_SECRET` | (ไม่บังคับ) |
+| `LIFF_ID` | จากการสร้าง LIFF app |
 | `TZ` | `Asia/Bangkok` |
 | `REBUILD_RICHMENU` | (ไม่บังคับ) ใส่ `1` เมื่ออยากสร้างเมนูใหม่ |
 
