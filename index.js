@@ -99,11 +99,30 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
 });
 
 async function handleEvent(event) {
-  if (event.type !== 'message') return;
   const uid = event.source && event.source.userId;
+  if (event.type === 'postback') return handlePostback(event, uid);
+  if (event.type !== 'message') return;
   const msg = event.message;
   if (msg.type === 'image') return handleImage(event, uid, msg);
   if (msg.type === 'text') return handleText(event, uid, msg.text.trim());
+}
+
+// ---------- postback (ปุ่มเลือกวันที่ในสรุป) ----------
+async function handlePostback(event, uid) {
+  const data = event.postback && event.postback.data;
+  const date = event.postback && event.postback.params && event.postback.params.date;
+  const flow = summaryFlow[uid];
+  if (!flow || !date) return;
+  if (data === 'sum_from') {
+    flow.from = date; flow.step = 'picking';
+    return safeReply(event.replyToken, [datePickerMsg('เลือก “วันสิ้นสุด”', 'sum_to', '📅 เลือกวันสิ้นสุด')]);
+  }
+  if (data === 'sum_to') {
+    let from = flow.from, to = date;
+    if (from && to && from > to) { const tmp = from; from = to; to = tmp; }
+    flow.from = from; flow.to = to; flow.step = 'group';
+    return safeReply(event.replyToken, [groupQuestion(from, to)]);
+  }
 }
 
 // ---------- รูปบิล ----------
@@ -111,6 +130,7 @@ async function handleImage(event, uid, msg) {
   await safeReply(event.replyToken, [{ type: 'text', text: '📸 กำลังอ่านบิล รอสักครู่...' }]);
   const buffer = await downloadContent(msg.id);
   const bill = await readBill(buffer, 'image/jpeg');
+  bill.date = ceDate(bill.date);
   delete summaryFlow[uid];
   pendingBill[uid] = { bill, stage: 'confirm', imageBuffer: buffer };
   const dup = bill.bill_no ? await sheets.billNoExists(bill.bill_no) : false;
@@ -170,7 +190,7 @@ async function handleSummaryFlow(event, uid, text) {
   const flow = summaryFlow[uid];
   if (/^(ยกเลิก|cancel)/i.test(text)) { delete summaryFlow[uid]; return safeReply(event.replyToken, [{ type: 'text', text: '❌ ยกเลิกการสรุป' }]); }
   if (flow.step === 'range') {
-    if (/ระบุ|เอง|กำหนด/.test(text)) { flow.step = 'range_text'; return safeReply(event.replyToken, [{ type: 'text', text: 'พิมพ์ช่วงวันที่ เช่น  1/6/2026 ถึง 15/6/2026' }]); }
+    if (/ระบุ|เอง|กำหนด/.test(text)) { flow.step = 'picking'; return safeReply(event.replyToken, [datePickerMsg('เลือก “วันเริ่มต้น”', 'sum_from', '📅 เลือกวันเริ่ม')]); }
     const r = parseCommand('สรุป ' + text);
     flow.from = r.from; flow.to = r.to; flow.step = 'group';
     return safeReply(event.replyToken, [groupQuestion(flow.from, flow.to)]);
@@ -182,8 +202,9 @@ async function handleSummaryFlow(event, uid, text) {
   }
   if (flow.step === 'group') {
     let groupBy = null;
-    if (/สาขา/.test(text)) groupBy = 'branch';
-    else if (/ขนส่ง|บริษัท/.test(text)) groupBy = 'courier';
+    if (/ผ้า/.test(text)) groupBy = 'fabric_company';
+    else if (/สาขา/.test(text)) groupBy = 'branch';
+    else if (/ขนส่ง/.test(text)) groupBy = 'courier';
     const { from, to } = flow;
     delete summaryFlow[uid];
     const s = await sheets.summarize(uid, from, to, groupBy);
@@ -233,6 +254,13 @@ function billCard(uid, b, dup) {
   };
 }
 
+function datePickerMsg(text, data, label) {
+  return { type: 'text', text, quickReply: { items: [
+    { type: 'action', action: { type: 'datetimepicker', label, data, mode: 'date' } },
+    qrMsg('❌ ยกเลิก', 'ยกเลิก'),
+  ] } };
+}
+
 function rangeQuestion() {
   return { type: 'text', text: '📊 รวมยอดค่าขนส่ง — เลือกช่วงเวลา', quickReply: { items: [
     qrMsg('รอบบิล (15→14)', 'รอบบิล'), qrMsg('เดือนนี้', 'เดือนนี้'),
@@ -241,7 +269,7 @@ function rangeQuestion() {
 }
 function groupQuestion(from, to) {
   return { type: 'text', text: `ช่วง ${from} ถึง ${to}\nต้องการสรุปแบบไหน?`, quickReply: { items: [
-    qrMsg('รวมทั้งหมด', 'รวมทั้งหมด'), qrMsg('แยกตามสาขา', 'แยกตามสาขา'), qrMsg('แยกตามขนส่ง', 'แยกตามขนส่ง'),
+    qrMsg('รวมทั้งหมด', 'รวมทั้งหมด'), qrMsg('แยกตามบริษัทผ้า', 'แยกตามบริษัทผ้า'), qrMsg('แยกตามขนส่ง', 'แยกตามขนส่ง'),
   ] } };
 }
 function summaryText(s, from, to, groupBy) {
@@ -250,7 +278,7 @@ function summaryText(s, from, to, groupBy) {
   const byDate = [...s.bills].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const L = [`📊 สรุปค่าขนส่ง ${from} ถึง ${to}`, `จำนวนบิล: ${s.count} ใบ`, `💰 รวมค่าขนส่ง: ${fmt(s.total)} บาท`];
   if (groupBy) {
-    L.push('', groupBy === 'branch' ? '🏪 แยกตามสาขา:' : '🚚 แยกตามบริษัทขนส่ง:');
+    L.push('', groupBy === 'fabric_company' ? '🧵 แยกตามบริษัทผ้า:' : (groupBy === 'branch' ? '🏪 แยกตามสาขา:' : '🚚 แยกตามบริษัทขนส่ง:'));
     for (const [name, g] of Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost)) {
       L.push(`▸ ${name}: ${fmt(g.cost)} บาท (${g.count} บิล)`);
       for (const b of byDate.filter((x) => gkey(x) === name)) {
@@ -295,9 +323,10 @@ function savedText(id, b) {
 function fmt(n) { if (n == null || n === '') return '0'; return Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 }); }
 function qrMsg(label, text) { return { type: 'action', action: { type: 'message', label, text } }; }
 function num(v) { const n = parseFloat(String(v).replace(/[, ฿]/g, '')); return Number.isNaN(n) ? null : n; }
+function ceDate(s) { s = String(s || '').trim(); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) return s || null; let y = parseInt(m[1], 10); if (y >= 2400) y -= 543; return y + '-' + m[2] + '-' + m[3]; }
 function normalizeBill(f) {
   return {
-    date: f.date || null, branch: f.branch || null, job_owner: f.job_owner || null,
+    date: ceDate(f.date), branch: f.branch || null, job_owner: f.job_owner || null,
     fabric_company: f.fabric_company || null,
     item_type: f.item_type || null, item: f.item || null, fabric_code: f.fabric_code || null,
     qty: num(f.qty), unit: f.unit || null,
