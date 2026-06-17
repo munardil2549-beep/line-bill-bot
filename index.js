@@ -74,10 +74,11 @@ app.post('/api/bill', express.json(), async (req, res) => {
     const uid = tokenUid(t);
     if (!uid) return res.status(403).json({ ok: false, error: 'token หมดอายุ' });
     const bill = normalizeBill(fields || {});
-    const imageBuffer = (pendingBill[uid] || {}).imageBuffer;
-    const id = await saveBill(uid, bill, imageBuffer);
-    await pushMessage(uid, [{ type: 'text', text: savedText(id, bill) }]).catch(() => {});
-    res.json({ ok: true, billId: id });
+    const prev = pendingBill[uid] || {};
+    const dup = bill.bill_no ? await sheets.billNoExists(bill.bill_no) : false;
+    pendingBill[uid] = { bill, stage: 'confirm', imageBuffer: prev.imageBuffer };
+    await pushMessage(uid, [billCard(uid, bill, dup)]).catch(() => {});
+    res.json({ ok: true });
   } catch (e) {
     console.error('api/bill POST', e);
     res.status(500).json({ ok: false, error: e.message });
@@ -112,7 +113,8 @@ async function handleImage(event, uid, msg) {
   const bill = await readBill(buffer, 'image/jpeg');
   delete summaryFlow[uid];
   pendingBill[uid] = { bill, stage: 'confirm', imageBuffer: buffer };
-  await pushMessage(uid, [billCard(uid, bill)]);
+  const dup = bill.bill_no ? await sheets.billNoExists(bill.bill_no) : false;
+  await pushMessage(uid, [billCard(uid, bill, dup)]);
 }
 
 // ---------- ข้อความ ----------
@@ -120,6 +122,9 @@ async function handleText(event, uid, text) {
   const st = pendingBill[uid];
   if (st) {
     if (/^(ยืนยัน|ตกลง|ok|yes|✅)/i.test(text)) {
+      if (st.bill.bill_no && await sheets.billNoExists(st.bill.bill_no)) {
+        return safeReply(event.replyToken, [{ type: 'text', text: '⚠️ บิลเลขที่ ' + st.bill.bill_no + ' เคยบันทึกไปแล้ว ไม่บันทึกซ้ำ\nถ้าเป็นคนละใบ กดแก้ไขแล้วเปลี่ยนเลขที่บิล' }]);
+      }
       const id = await saveBill(uid, st.bill, st.imageBuffer);
       return safeReply(event.replyToken, [{ type: 'text', text: savedText(id, st.bill) }]);
     }
@@ -137,7 +142,8 @@ async function handleText(event, uid, text) {
       if (!Object.keys(edits).length) return safeReply(event.replyToken, [{ type: 'text', text: 'ไม่เข้าใจรูปแบบ ลองใหม่ เช่น  สาขา=ยะลา' }]);
       Object.assign(st.bill, edits);
       st.stage = 'confirm';
-      return safeReply(event.replyToken, [billCard(uid, st.bill)]);
+      const dup2 = st.bill.bill_no ? await sheets.billNoExists(st.bill.bill_no) : false;
+      return safeReply(event.replyToken, [billCard(uid, st.bill, dup2)]);
     }
   }
 
@@ -193,23 +199,29 @@ function makeEditUrl(uid) {
   return `https://liff.line.me/${LIFF_ID}?t=${t}`;
 }
 
-function billCard(uid, b) {
+function billCard(uid, b, dup) {
   const L = [];
   L.push('🧾 ตรวจสอบบิลขนส่ง');
-  L.push('🚚 ขนส่ง: ' + (b.courier || '-'));
+  if (dup) L.push('⚠️ เลขที่บิลนี้เคยบันทึกแล้ว!');
+  L.push('━ ข้อมูล ━');
   L.push('📅 วันที่: ' + (b.date || '-'));
   L.push('🏪 สาขา: ' + (b.branch || '-'));
   L.push('👤 เจ้าของงาน: ' + (b.job_owner || '-'));
+  L.push('🚚 ขนส่ง: ' + (b.courier || '-') + (b.bill_no ? ('  #' + b.bill_no) : ''));
+  L.push('💳 เก็บเงิน: ' + (b.payment || '-'));
+  L.push('━ สินค้า ━');
   L.push('🧵 บริษัทผ้า: ' + (b.fabric_company || '-'));
+  L.push('📦 ประเภท: ' + (b.item_type || '-'));
+  if (b.item) L.push('📋 รายการ: ' + b.item);
   if (b.fabric_code) L.push('🏷️ รหัสผ้า: ' + b.fabric_code);
-  L.push('📦 รายการ: ' + (b.item || '-'));
-  L.push('🔢 จำนวน: ' + (b.qty != null ? b.qty + ' ชิ้น' : '-'));
+  L.push('🔢 จำนวน: ' + (b.qty != null ? b.qty : '-') + (b.unit ? ' ' + b.unit : ''));
+  L.push('━ ราคา ━');
   L.push('💰 ค่าขนส่ง: ' + fmt(b.shipping_cost) + ' บาท');
   const missing = [];
   if (!b.branch) missing.push('สาขา');
   if (!b.job_owner) missing.push('เจ้าของงาน');
   L.push('');
-  L.push(missing.length ? ('⚠️ ยังไม่มี: ' + missing.join(', ') + ' — กดแก้ไขเพื่อเติม') : 'ถูกต้องไหม? กดยืนยัน หรือแก้ไข');
+  L.push(missing.length ? ('⚠️ ยังไม่มี: ' + missing.join(', ') + ' — กดแก้ไขเพื่อเติม') : 'ตรวจสอบแล้ว กดยืนยัน หรือแก้ไข');
 
   const editUrl = makeEditUrl(uid);
   const editAction = editUrl
@@ -265,7 +277,18 @@ function helpText() {
   return '👋 วิธีใช้งาน\n\n📸 ส่งรูปบิล → ตรวจ → กดยืนยัน บันทึกลงชีท\n📊 "รวมยอด" → เลือกช่วง แล้วแยกตามสาขา/ขนส่ง\n🗂️ "เปิดชีท" → ลิงก์ดาต้าเบส\n🧾 "บิลล่าสุด" → 5 รายการหลังสุด';
 }
 function savedText(id, b) {
-  return `✅ บันทึกแล้ว (รหัส ${id})\nสาขา ${b.branch || '-'} · เจ้าของงาน ${b.job_owner || '-'} · ค่าขนส่ง ${fmt(b.shipping_cost)} บาท\n\nกด "รวมยอด" ดูสรุป หรือส่งบิลใบใหม่ได้เลย`;
+  const L = ['✅ บันทึกแล้ว (รหัส ' + id + ')', ''];
+  L.push('📅 ' + (b.date || '-') + '   🏪 ' + (b.branch || '-'));
+  L.push('👤 ' + (b.job_owner || '-'));
+  L.push('🧵 ' + (b.fabric_company || '-') + (b.item_type ? ('  ·  ' + b.item_type) : ''));
+  if (b.item) L.push('📋 ' + b.item);
+  if (b.fabric_code) L.push('🏷️ รหัสผ้า ' + b.fabric_code);
+  L.push('🔢 ' + (b.qty != null ? b.qty : '-') + (b.unit ? ' ' + b.unit : ''));
+  L.push('🚚 ' + (b.courier || '-') + (b.bill_no ? ('  #' + b.bill_no) : ''));
+  L.push('💰 ค่าขนส่ง ' + fmt(b.shipping_cost) + ' บาท' + (b.payment ? ('  (' + b.payment + ')') : ''));
+  if (b.image_url) L.push('🖼️ ' + b.image_url);
+  L.push('', 'พิมพ์ "รวมยอด" ดูสรุป หรือส่งบิลใบใหม่');
+  return L.join('\n');
 }
 
 // ---------- utils ----------
@@ -275,10 +298,11 @@ function num(v) { const n = parseFloat(String(v).replace(/[, ฿]/g, '')); retur
 function normalizeBill(f) {
   return {
     date: f.date || null, branch: f.branch || null, job_owner: f.job_owner || null,
-    fabric_company: f.fabric_company || null, fabric_code: f.fabric_code || null,
+    fabric_company: f.fabric_company || null,
+    item_type: f.item_type || null, item: f.item || null, fabric_code: f.fabric_code || null,
+    qty: num(f.qty), unit: f.unit || null,
     courier: f.courier || null, bill_no: f.bill_no || null,
-    item: f.item || null, qty: num(f.qty), shipping_cost: num(f.shipping_cost), payment: f.payment || null,
-    image_url: f.image_url || null,
+    shipping_cost: num(f.shipping_cost), payment: f.payment || null, image_url: f.image_url || null,
   };
 }
 async function downloadContent(messageId) {
