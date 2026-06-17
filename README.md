@@ -72,6 +72,8 @@
 | `CLOUDINARY_API_KEY` | (ไม่บังคับ) |
 | `CLOUDINARY_API_SECRET` | (ไม่บังคับ) |
 | `LIFF_ID` | จากการสร้าง LIFF app |
+| `VIEW_PASSCODE` | รหัสผ่านหน้าดูข้อมูล |
+| `PUBLIC_BASE_URL` | URL ของ service เช่น https://line-bill-bot-1.onrender.com |
 | `TZ` | `Asia/Bangkok` |
 | `REBUILD_RICHMENU` | (ไม่บังคับ) ใส่ `1` เมื่ออยากสร้างเมนูใหม่ |
 

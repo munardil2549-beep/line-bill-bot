@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ดูข้อมูลบิล (อ่านอย่างเดียว)</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,'Sarabun',sans-serif;background:#eef2f7;color:#0f172a}
+  .wrap{max-width:560px;margin:0 auto;padding:14px 12px 40px}
+  h1{font-size:18px;margin:6px 2px 12px}
+  .gate{max-width:340px;margin:60px auto;text-align:center}
+  .gate input{width:100%;padding:13px;border:1.5px solid #cbd5e1;border-radius:12px;font-size:16px;margin:10px 0}
+  .btn{background:#4A90D9;color:#fff;border:none;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:800;width:100%;cursor:pointer}
+  .tools{position:sticky;top:0;background:#eef2f7;padding:8px 0;z-index:5}
+  .tools input,.tools select{width:100%;padding:11px;border:1.5px solid #cbd5e1;border-radius:11px;font-size:15px;background:#fff;margin-bottom:8px}
+  .sum{background:#1e293b;color:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px}
+  .sum b{font-size:22px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;margin-bottom:10px;font-size:14px;line-height:1.6}
+  .card .top{display:flex;justify-content:space-between;font-weight:800;margin-bottom:2px}
+  .card .cost{color:#3BA55C}
+  .muted{color:#64748b;font-size:13px}
+  .tag{display:inline-block;background:#eef2f7;border-radius:6px;padding:1px 7px;font-size:12px;margin-right:4px}
+  a.img{color:#4A90D9;font-weight:700;text-decoration:none}
+  .msg{text-align:center;color:#64748b;padding:30px}
+  .ro{text-align:center;color:#94a3b8;font-size:12px;margin:4px 0 10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="gate" class="gate">
+    <h1>🔒 ดูข้อมูลบิล</h1>
+    <p class="muted">ใส่รหัสผ่านเพื่อดูข้อมูล (อ่านอย่างเดียว)</p>
+    <input id="pass" type="password" placeholder="รหัสผ่าน" onkeydown="if(event.key==='Enter')login()">
+    <button class="btn" onclick="login()">เข้าดูข้อมูล</button>
+    <p id="gateMsg" class="muted"></p>
+  </div>
+
+  <div id="app" style="display:none">
+    <h1>🧾 ข้อมูลบิลทั้งหมด</h1>
+    <div class="ro">👁️ โหมดอ่านอย่างเดียว — แก้ไข/ลบไม่ได้</div>
+    <div class="tools">
+      <input id="q" placeholder="🔍 ค้นหา: สาขา / เจ้าของงาน / ผ้า / เลขบิล" oninput="render()">
+      <select id="month" onchange="render()"><option value="">— ทุกเดือน —</option></select>
+    </div>
+    <div class="sum" id="sum"></div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+let ALL = [];
+function getPass(){ return localStorage.getItem('viewpass') || ''; }
+function fmt(n){ return Number(n||0).toLocaleString('th-TH',{maximumFractionDigits:2}); }
+
+async function load(pass){
+  const r = await fetch('/api/data?pass=' + encodeURIComponent(pass));
+  const d = await r.json();
+  if(!d.ok) throw new Error(d.error || 'โหลดข้อมูลไม่ได้');
+  ALL = (d.bills||[]).filter(b=>b.date||b.bill_no);
+  ALL.sort((a,b)=>(b.date||'').localeCompare(a.date||''));  // ใหม่สุดก่อน
+  // เติมตัวเลือกเดือน
+  const months=[...new Set(ALL.map(b=>(b.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const sel=document.getElementById('month');
+  months.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});
+}
+async function login(){
+  const pass=document.getElementById('pass').value.trim();
+  document.getElementById('gateMsg').textContent='กำลังตรวจสอบ…';
+  try{
+    await load(pass);
+    localStorage.setItem('viewpass',pass);
+    document.getElementById('gate').style.display='none';
+    document.getElementById('app').style.display='block';
+    render();
+  }catch(e){ document.getElementById('gateMsg').textContent='❌ '+e.message; }
+}
+function render(){
+  const q=(document.getElementById('q').value||'').toLowerCase().trim();
+  const mo=document.getElementById('month').value;
+  let rows=ALL;
+  if(mo) rows=rows.filter(b=>(b.date||'').slice(0,7)===mo);
+  if(q) rows=rows.filter(b=>[b.branch,b.job_owner,b.fabric_company,b.item,b.bill_no,b.courier].join(' ').toLowerCase().includes(q));
+  const total=rows.reduce((s,b)=>s+(parseFloat(b.shipping_cost)||0),0);
+  document.getElementById('sum').innerHTML='พบ '+rows.length+' บิล · รวมค่าขนส่ง <b>'+fmt(total)+'</b> บาท';
+  const list=document.getElementById('list');
+  if(!rows.length){ list.innerHTML='<div class="msg">ไม่พบข้อมูล</div>'; return; }
+  list.innerHTML=rows.map(b=>{
+    const itemLine=[b.item_type,b.item,b.fabric_code].filter(Boolean).join(' · ');
+    const qty=(b.qty?b.qty:'')+(b.unit?(' '+b.unit):'');
+    const img=b.image_url?(' · <a class="img" href="'+b.image_url+'" target="_blank">📷 ดูรูป</a>'):'';
+    return '<div class="card">'+
+      '<div class="top"><span>'+(b.date||'-')+' · '+(b.branch||'-')+'</span><span class="cost">'+fmt(b.shipping_cost)+' ฿</span></div>'+
+      '<div>👤 '+(b.job_owner||'-')+'</div>'+
+      '<div class="muted">🧵 '+(b.fabric_company||'-')+(itemLine?(' · '+itemLine):'')+(qty?(' · '+qty):'')+'</div>'+
+      '<div class="muted">🚚 '+(b.courier||'-')+(b.bill_no?(' #'+b.bill_no):'')+(b.payment?(' · '+b.payment):'')+img+'</div>'+
+    '</div>';
+  }).join('');
+}
+// จำรหัสไว้ ไม่ต้องพิมพ์ซ้ำ
+(function(){ const p=getPass(); if(p){ document.getElementById('pass').value=p; login(); } })();
+</script>
+</body>
+</html>

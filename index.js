@@ -17,6 +17,9 @@ const config = {
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const LIFF_ID = process.env.LIFF_ID || '';
+const VIEW_PASSCODE = process.env.VIEW_PASSCODE || '';
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+function dataUrl() { return PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/data' : sheets.sheetUrl(); }
 
 const client = new line.messagingApi.MessagingApiClient({ channelAccessToken: config.channelAccessToken });
 const blobClient = new line.messagingApi.MessagingApiBlobClient({ channelAccessToken: config.channelAccessToken });
@@ -54,6 +57,17 @@ try { LIFF_HTML = fs.readFileSync(path.join(__dirname, 'liff.html'), 'utf8'); } 
 app.get('/liff', (_req, res) => {
   if (!LIFF_ID) return res.type('html').send('<h3>ยังไม่ได้ตั้งค่า LIFF_ID</h3>');
   res.type('html').send(LIFF_HTML.replace(/__LIFF_ID__/g, LIFF_ID));
+});
+
+// ---------- หน้าดูข้อมูล (อ่านอย่างเดียว + รหัสผ่าน) ----------
+let DATA_HTML = '';
+try { DATA_HTML = fs.readFileSync(path.join(__dirname, 'data.html'), 'utf8'); } catch (_) {}
+app.get('/data', (_req, res) => res.type('html').send(DATA_HTML || '<h3>data.html missing</h3>'));
+app.get('/api/data', express.json(), async (req, res) => {
+  if (!VIEW_PASSCODE) return res.status(403).json({ ok: false, error: 'ยังไม่ได้ตั้งรหัส (VIEW_PASSCODE)' });
+  if ((req.query.pass || '') !== VIEW_PASSCODE) return res.status(403).json({ ok: false, error: 'รหัสผ่านไม่ถูกต้อง' });
+  try { const bills = await sheets.getBills(null); res.json({ ok: true, bills }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // ---------- API สำหรับฟอร์ม ----------
@@ -175,7 +189,7 @@ async function handleText(event, uid, text) {
   }
   const cmd = parseCommand(text);
   if (cmd && cmd.type === 'help') return safeReply(event.replyToken, [{ type: 'text', text: helpText() }]);
-  if (cmd && cmd.type === 'sheet') return safeReply(event.replyToken, [{ type: 'text', text: '🗂️ เปิดดาต้าเบส (Google Sheet):\n' + sheets.sheetUrl() }]);
+  if (cmd && cmd.type === 'sheet') return safeReply(event.replyToken, [{ type: 'text', text: '🗂️ ดูข้อมูลบิล (อ่านอย่างเดียว):\n' + dataUrl() }]);
   if (cmd && cmd.type === 'recent') return safeReply(event.replyToken, [{ type: 'text', text: await recentText(uid) }]);
   if (cmd && cmd.type === 'summary') {
     const s = await sheets.summarize(uid, cmd.from, cmd.to, cmd.groupBy);
@@ -298,7 +312,7 @@ async function recentText(uid) {
   if (!bills.length) return '🗂️ ยังไม่มีบิลที่บันทึก';
   const L = ['🗂️ บิลล่าสุด:'];
   bills.forEach((b, i) => L.push(`${i + 1}) ${b.date || '-'} · ${b.branch || '-'} · ${b.courier || '-'} · ${fmt(b.shipping_cost)} บาท`));
-  L.push('\nเปิดทั้งหมด: ' + sheets.sheetUrl());
+  L.push('\nดูทั้งหมด: ' + dataUrl());
   return L.join('\n');
 }
 function helpText() {
@@ -361,7 +375,7 @@ async function ensureRichMenu() {
       size: { width: 2500, height: 843 }, selected: true, name: 'bill-menu', chatBarText: 'เมนู',
       areas: [
         { bounds: { x: 0, y: 0, width: 833, height: 843 }, action: { type: 'message', text: 'รวมยอด' } },
-        { bounds: { x: 833, y: 0, width: 834, height: 843 }, action: { type: 'uri', uri: sheets.sheetUrl() } },
+        { bounds: { x: 833, y: 0, width: 834, height: 843 }, action: { type: 'uri', uri: dataUrl() } },
         { bounds: { x: 1667, y: 0, width: 833, height: 843 }, action: { type: 'camera', label: 'ถ่ายรูป' } },
       ],
     };

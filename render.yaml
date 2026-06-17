@@ -36,5 +36,9 @@ services:
         sync: false
       - key: LIFF_ID
         sync: false
+      - key: VIEW_PASSCODE
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
       - key: TZ
         value: Asia/Bangkok
