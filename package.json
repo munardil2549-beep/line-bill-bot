@@ -1,6 +1,6 @@
 {
   "name": "line-bill-bot",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "LINE bot อ่านบิลจากรูป ยืนยัน/แก้ไขข้อมูล และสรุปยอดตามช่วงวันที่ (OCR.space + Groq + Google Sheets)",
   "main": "index.js",
   "type": "commonjs",
