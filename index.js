@@ -291,8 +291,7 @@ function datePickerMsg(text, data, label) {
 
 function rangeQuestion() {
   return { type: 'text', text: '📊 รวมยอดค่าขนส่ง — เลือกช่วงเวลา', quickReply: { items: [
-    qrMsg('รอบบิล (15→14)', 'รอบบิล'), qrMsg('เดือนนี้', 'เดือนนี้'),
-    qrMsg('เดือนที่แล้ว', 'เดือนที่แล้ว'), qrMsg('ระบุช่วงเอง', 'ระบุช่วงเอง'),
+    qrMsg('รอบบิล (15→14)', 'รอบบิล'), qrMsg('ระบุช่วงเอง', 'ระบุช่วงเอง'),
   ] } };
 }
 function groupQuestion(from, to) {
