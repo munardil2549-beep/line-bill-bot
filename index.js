@@ -300,27 +300,39 @@ function groupQuestion(from, to) {
     qrMsg('รวมทั้งหมด', 'รวมทั้งหมด'), qrMsg('แยกตามบริษัทผ้า', 'แยกตามบริษัทผ้า'), qrMsg('แยกตามขนส่ง', 'แยกตามขนส่ง'),
   ] } };
 }
+function fmtDay(d) {
+  const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? (m[3] + '/' + m[2]) : (d || '-');
+}
 function summaryText(s, from, to, groupBy) {
-  if (s.count === 0) return `📊 ช่วง ${from} ถึง ${to}\nไม่พบบิลในช่วงนี้`;
+  const DIV = '━━━━━━━━━━━━━';
+  if (s.count === 0) return `📊 สรุปค่าขนส่ง\n🗓 ${from} ถึง ${to}\n${DIV}\nไม่พบบิลในช่วงนี้`;
   const gkey = (b) => (b[groupBy] || '(ไม่ระบุ)').toString().trim() || '(ไม่ระบุ)';
   const byDate = [...s.bills].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  const L = [`📊 สรุปค่าขนส่ง ${from} ถึง ${to}`, `จำนวนบิล: ${s.count} ใบ`, `💰 รวมค่าขนส่ง: ${fmt(s.total)} บาท`];
+  const L = ['📊 สรุปค่าขนส่ง', `🗓 ${from} ถึง ${to}`, DIV, `รวม ${s.count} บิล · ${fmt(s.total)} บาท`];
   if (groupBy) {
-    L.push('', groupBy === 'fabric_company' ? '🧵 แยกตามบริษัทผ้า:' : (groupBy === 'branch' ? '🏪 แยกตามสาขา:' : '🚚 แยกตามบริษัทขนส่ง:'));
+    const label = groupBy === 'fabric_company' ? '🧵 แยกตามบริษัทผ้า'
+      : groupBy === 'branch' ? '🏪 แยกตามสาขา' : '🚚 แยกตามขนส่ง';
+    L.push('', label);
     for (const [name, g] of Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost)) {
-      L.push(`▸ ${name}: ${fmt(g.cost)} บาท (${g.count} บิล)`);
+      L.push('', `▸ ${name}`, `   ${fmt(g.cost)} บาท · ${g.count} บิล`);
+      let i = 1;
       for (const b of byDate.filter((x) => gkey(x) === name)) {
-        L.push(`   • ${b.date || '-'} · ${b.job_owner || '-'} — ${fmt(b.shipping_cost)}`);
+        L.push(`   ${i++}) ${fmtDay(b.date)}  ${b.job_owner || '-'}  —  ${fmt(b.shipping_cost)}`);
       }
     }
   } else {
-    L.push('', 'รายการ (เรียงตามวันที่):');
-    for (const b of byDate) L.push(`• ${b.date || '-'} · ${b.branch || '-'} · ${b.job_owner || '-'} — ${fmt(b.shipping_cost)}`);
+    L.push('', 'รายการ (เรียงวันที่)', DIV);
+    let i = 1;
+    for (const b of byDate) {
+      L.push(`${i++}) ${fmtDay(b.date)}  ${b.branch || '-'} · ${b.job_owner || '-'}  —  ${fmt(b.shipping_cost)}`);
+    }
   }
   let out = L.join('\n');
   if (out.length > 4800) out = out.slice(0, 4700) + '\n…(ตัดบางส่วน ดูทั้งหมดในชีท)';
   return out;
 }
+
 async function recentText(uid) {
   const bills = await sheets.recentBills(uid, 5);
   if (!bills.length) return '🗂️ ยังไม่มีบิลที่บันทึก';
