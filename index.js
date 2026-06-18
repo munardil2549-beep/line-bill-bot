@@ -70,6 +70,14 @@ app.get('/api/data', express.json(), async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ---------- สำรองข้อมูล (คัดลอกแท็บปัจจุบัน) — ต้องใส่รหัสผ่าน ----------
+app.get('/api/backup', express.json(), async (req, res) => {
+  if (!VIEW_PASSCODE) return res.status(403).json({ ok: false, error: 'ยังไม่ได้ตั้งรหัส (VIEW_PASSCODE)' });
+  if ((req.query.pass || '') !== VIEW_PASSCODE) return res.status(403).json({ ok: false, error: 'รหัสผ่านไม่ถูกต้อง' });
+  try { const title = await sheets.backup(); res.json({ ok: true, title }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ---------- API สำหรับฟอร์ม ----------
 function tokenUid(t) {
   const e = editTokens[t];
@@ -182,6 +190,12 @@ async function handleText(event, uid, text) {
   }
 
   if (summaryFlow[uid]) return handleSummaryFlow(event, uid, text);
+
+  if (/^(สำรองข้อมูล|สำรอง|backup)\s*$/i.test(text)) {
+    await safeReply(event.replyToken, [{ type: 'text', text: '💾 กำลังสำรองข้อมูล...' }]);
+    try { const title = await sheets.backup(); return pushMessage(uid, [{ type: 'text', text: '✅ สำรองข้อมูลแล้ว\nสร้างแท็บ "' + title + '" ในชีท (ข้อมูลต้นฉบับยังอยู่ครบ)' }]); }
+    catch (e) { return pushMessage(uid, [{ type: 'text', text: '⚠️ สำรองไม่สำเร็จ: ' + e.message }]); }
+  }
 
   if (/^(รวมยอด|สรุป|summary)\s*$/i.test(text)) {
     summaryFlow[uid] = { step: 'range' };
@@ -316,7 +330,7 @@ async function recentText(uid) {
   return L.join('\n');
 }
 function helpText() {
-  return '👋 วิธีใช้งาน\n\n📸 ส่งรูปบิล → ตรวจ → กดยืนยัน บันทึกลงชีท\n📊 "รวมยอด" → เลือกช่วง แล้วแยกตามสาขา/ขนส่ง\n🗂️ "เปิดชีท" → ลิงก์ดาต้าเบส\n🧾 "บิลล่าสุด" → 5 รายการหลังสุด';
+  return '👋 วิธีใช้งาน\n\n📸 ส่งรูปบิล → ตรวจ → กดยืนยัน บันทึกลงชีท\n📊 "รวมยอด" → เลือกช่วง แล้วแยกตามบริษัทผ้า/ขนส่ง\n🗂️ "เปิดชีท" → ลิงก์ดูข้อมูลบิล\n🧾 "บิลล่าสุด" → 5 รายการหลังสุด\n💾 "สำรองข้อมูล" → คัดลอกข้อมูลกันหาย';
 }
 function savedText(id, b) {
   const L = ['✅ บันทึกแล้ว (รหัส ' + id + ')', ''];
