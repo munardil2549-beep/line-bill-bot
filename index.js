@@ -248,11 +248,11 @@ function makeEditUrl(uid) {
   return `https://liff.line.me/${LIFF_ID}?t=${t}`;
 }
 
-function secLabel(t) { return { type: 'text', text: t, color: '#B59A4F', size: 'xs', weight: 'bold' }; }
+function secLabel(t) { return { type: 'text', text: t, color: '#8A6E2E', size: 'xs', weight: 'bold' }; }
 function sepLine() { return { type: 'separator', margin: 'md', color: '#EAE2D2' }; }
 function kvRow(label, value, valColor) {
   return { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
-    { type: 'text', text: label, color: '#9b8a5a', size: 'sm', flex: 3 },
+    { type: 'text', text: label, color: '#6E5F3A', size: 'sm', flex: 3 },
     { type: 'text', text: (value == null || value === '' ? '-' : String(value)), wrap: true, color: (valColor || '#2C2A26'), size: 'sm', flex: 6 },
   ] };
 }
@@ -265,7 +265,7 @@ function billCard(uid, b, dup) {
 
   const header = {
     type: 'box', layout: 'vertical', paddingAll: '18px', spacing: 'xs',
-    background: { type: 'linearGradient', angle: '135deg', startColor: '#D9B45A', endColor: '#A9781F' },
+    background: { type: 'linearGradient', angle: '135deg', startColor: '#A86E16', endColor: '#7E5410' },
     contents: [
       { type: 'text', text: '🧾 ตรวจสอบบิลขนส่ง', color: '#FFFFFF', size: 'xs', weight: 'bold' },
       { type: 'text', text: (b.branch || 'ยังไม่ระบุสาขา'), color: '#FFFFFF', size: 'xl', weight: 'bold' },
@@ -295,9 +295,12 @@ function billCard(uid, b, dup) {
       { type: 'text', text: fmt(b.shipping_cost) + ' ฿', color: '#7A5512', size: 'xxl', weight: 'bold', align: 'end' },
     ],
   });
-  if (missing.length) detail.push({
-    type: 'box', layout: 'vertical', backgroundColor: '#FDEEE7', cornerRadius: '10px', paddingAll: '10px', margin: 'md',
-    contents: [ { type: 'text', text: '⚠️ ยังไม่มี: ' + missing.join(', ') + ' — กดแก้ไขเพื่อเติม', wrap: true, color: '#C0451E', size: 'xs' } ],
+  if (missing.length) detail.unshift({
+    type: 'box', layout: 'vertical', backgroundColor: '#FBE3DA', cornerRadius: '12px', paddingAll: '12px', spacing: 'xs',
+    contents: [
+      { type: 'text', text: '⚠️ ต้องเติมก่อนบันทึก', color: '#B23A12', size: 'sm', weight: 'bold' },
+      { type: 'text', text: missing.join('  ·  '), color: '#C0451E', size: 'xs', wrap: true },
+    ],
   });
 
   const editBtn = editUrl
@@ -311,7 +314,7 @@ function billCard(uid, b, dup) {
       header,
       body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '18px', contents: detail },
       footer: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px', contents: [
-        { type: 'button', style: 'primary', color: '#2FA163', height: 'sm', action: { type: 'message', label: '✅ ยืนยันบันทึก', text: 'ยืนยัน' } },
+        { type: 'button', style: 'primary', color: '#2FA163', height: 'md', action: { type: 'message', label: '✅ ยืนยันบันทึก', text: 'ยืนยัน' } },
         editBtn,
         { type: 'button', style: 'link', height: 'sm', color: '#A09E96', action: { type: 'message', label: 'ยกเลิก', text: 'ยกเลิก' } },
       ] },
@@ -344,7 +347,7 @@ function fmtDay(d) {
 
 function summaryCard(s, from, to, groupBy) {
   const header = { type: 'box', layout: 'vertical', paddingAll: '18px', spacing: 'xs',
-    background: { type: 'linearGradient', angle: '135deg', startColor: '#D9B45A', endColor: '#A9781F' },
+    background: { type: 'linearGradient', angle: '135deg', startColor: '#A86E16', endColor: '#7E5410' },
     contents: [
       { type: 'text', text: '📊 สรุปค่าขนส่ง', color: '#FFFFFF', size: 'sm', weight: 'bold' },
       { type: 'text', text: from + '  ถึง  ' + to, color: '#FBEFD0', size: 'xs' },
@@ -358,14 +361,14 @@ function summaryCard(s, from, to, groupBy) {
   }];
   if (groupBy) {
     const label = groupBy === 'fabric_company' ? 'แยกตามบริษัทผ้า' : groupBy === 'branch' ? 'แยกตามสาขา' : 'แยกตามขนส่ง';
-    body.push({ type: 'text', text: label, color: '#B59A4F', size: 'xs', weight: 'bold', margin: 'lg' });
+    body.push({ type: 'text', text: label, color: '#8A6E2E', size: 'xs', weight: 'bold', margin: 'lg' });
     const entries = Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost);
     entries.forEach(([name, g], idx) => {
       if (idx > 0) body.push(sepLine());
       body.push({ type: 'box', layout: 'horizontal', alignItems: 'center', margin: (idx === 0 ? 'md' : 'none'), contents: [
         { type: 'box', layout: 'vertical', flex: 6, contents: [
           { type: 'text', text: name, size: 'sm', weight: 'bold', color: '#2C2A26', wrap: true },
-          { type: 'text', text: g.count + ' บิล', size: 'xxs', color: '#9b8a5a' },
+          { type: 'text', text: g.count + ' บิล', size: 'xxs', color: '#6E5F3A' },
         ] },
         { type: 'text', text: fmt(g.cost) + ' ฿', size: 'md', weight: 'bold', color: '#7A5512', align: 'end', flex: 4 },
       ] });
@@ -467,7 +470,7 @@ async function recentCard(uid) {
   const bubbles = bills.map((b) => ({
     type: 'bubble', size: 'micro',
     header: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'xs',
-      background: { type: 'linearGradient', angle: '135deg', startColor: '#D9B45A', endColor: '#A9781F' },
+      background: { type: 'linearGradient', angle: '135deg', startColor: '#A86E16', endColor: '#7E5410' },
       contents: [
         { type: 'text', text: (b.branch || '-'), color: '#FFFFFF', weight: 'bold', size: 'sm', wrap: true },
         { type: 'text', text: (b.date || '-'), color: '#FBEFD0', size: 'xxs' },
