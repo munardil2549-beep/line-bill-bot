@@ -168,7 +168,7 @@ async function handleText(event, uid, text) {
         return safeReply(event.replyToken, [{ type: 'text', text: '⚠️ บิลเลขที่ ' + st.bill.bill_no + ' เคยบันทึกไปแล้ว ไม่บันทึกซ้ำ\nถ้าเป็นคนละใบ กดแก้ไขแล้วเปลี่ยนเลขที่บิล' }]);
       }
       const id = await saveBill(uid, st.bill, st.imageBuffer);
-      return safeReply(event.replyToken, [{ type: 'text', text: savedText(id, st.bill) }]);
+      return safeReply(event.replyToken, [savedCard(id, st.bill)]);
     }
     if (/^(แก้ไข|แก้|edit|✏️)/i.test(text) && st.stage === 'confirm') {
       st.stage = 'edit';
@@ -204,7 +204,7 @@ async function handleText(event, uid, text) {
   const cmd = parseCommand(text);
   if (cmd && cmd.type === 'help') return safeReply(event.replyToken, [{ type: 'text', text: helpText() }]);
   if (cmd && cmd.type === 'sheet') return safeReply(event.replyToken, [{ type: 'text', text: '🗂️ ดูข้อมูลบิล (อ่านอย่างเดียว):\n' + dataUrl() }]);
-  if (cmd && cmd.type === 'recent') return safeReply(event.replyToken, [{ type: 'text', text: await recentText(uid) }]);
+  if (cmd && cmd.type === 'recent') return safeReply(event.replyToken, [await recentCard(uid)]);
   if (cmd && cmd.type === 'summary') {
     const s = await sheets.summarize(uid, cmd.from, cmd.to, cmd.groupBy);
     return safeReply(event.replyToken, [{ type: 'text', text: summaryText(s, cmd.from, cmd.to, cmd.groupBy) }]);
@@ -248,37 +248,75 @@ function makeEditUrl(uid) {
   return `https://liff.line.me/${LIFF_ID}?t=${t}`;
 }
 
+function secLabel(t) { return { type: 'text', text: t, color: '#B59A4F', size: 'xs', weight: 'bold' }; }
+function sepLine() { return { type: 'separator', margin: 'md', color: '#EAE2D2' }; }
+function kvRow(label, value, valColor) {
+  return { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+    { type: 'text', text: label, color: '#9b8a5a', size: 'sm', flex: 3 },
+    { type: 'text', text: (value == null || value === '' ? '-' : String(value)), wrap: true, color: (valColor || '#2C2A26'), size: 'sm', flex: 6 },
+  ] };
+}
+
 function billCard(uid, b, dup) {
-  const L = [];
-  L.push('🧾 ตรวจสอบบิลขนส่ง');
-  if (dup) L.push('⚠️ เลขที่บิลนี้เคยบันทึกแล้ว!');
-  L.push('━ ข้อมูล ━');
-  L.push('📅 วันที่: ' + (b.date || '-'));
-  L.push('🏪 สาขา: ' + (b.branch || '-'));
-  L.push('👤 เจ้าของงาน: ' + (b.job_owner || '-'));
-  L.push('🚚 ขนส่ง: ' + (b.courier || '-') + (b.bill_no ? ('  #' + b.bill_no) : ''));
-  L.push('💳 เก็บเงิน: ' + (b.payment || '-'));
-  L.push('━ สินค้า ━');
-  L.push('🧵 บริษัทผ้า: ' + (b.fabric_company || '-'));
-  L.push('📦 ประเภท: ' + (b.item_type || '-'));
-  if (b.item) L.push('📋 รายการ: ' + b.item);
-  if (b.fabric_code) L.push('🏷️ รหัสผ้า: ' + b.fabric_code);
-  L.push('🔢 จำนวน: ' + (b.qty != null ? b.qty : '-') + (b.unit ? ' ' + b.unit : ''));
-  L.push('━ ราคา ━');
-  L.push('💰 ค่าขนส่ง: ' + fmt(b.shipping_cost) + ' บาท');
+  const editUrl = makeEditUrl(uid);
   const missing = [];
   if (!b.branch) missing.push('สาขา');
   if (!b.job_owner) missing.push('เจ้าของงาน');
-  L.push('');
-  L.push(missing.length ? ('⚠️ ยังไม่มี: ' + missing.join(', ') + ' — กดแก้ไขเพื่อเติม') : 'ตรวจสอบแล้ว กดยืนยัน หรือแก้ไข');
 
-  const editUrl = makeEditUrl(uid);
-  const editAction = editUrl
-    ? { type: 'action', action: { type: 'uri', label: '✏️ แก้ไข', uri: editUrl } }
-    : qrMsg('✏️ แก้ไข', 'แก้ไข');
+  const header = {
+    type: 'box', layout: 'vertical', paddingAll: '18px', spacing: 'xs',
+    background: { type: 'linearGradient', angle: '135deg', startColor: '#D9B45A', endColor: '#A9781F' },
+    contents: [
+      { type: 'text', text: '🧾 ตรวจสอบบิลขนส่ง', color: '#FFFFFF', size: 'xs', weight: 'bold' },
+      { type: 'text', text: (b.branch || 'ยังไม่ระบุสาขา'), color: '#FFFFFF', size: 'xl', weight: 'bold' },
+      { type: 'text', text: 'เจ้าของงาน · ' + (b.job_owner || '-'), color: '#FBEFD0', size: 'xs', wrap: true },
+    ],
+  };
+  if (dup) header.contents.push({ type: 'text', text: '⚠️ เลขที่บิลนี้เคยบันทึกแล้ว', color: '#FFE3E3', size: 'xxs', margin: 'sm' });
+
+  const detail = [
+    secLabel('ข้อมูล'),
+    kvRow('วันที่', b.date),
+    kvRow('ขนส่ง', (b.courier || '-') + (b.bill_no ? ('  #' + b.bill_no) : '')),
+    kvRow('เก็บเงิน', b.payment),
+    sepLine(),
+    secLabel('สินค้า'),
+    kvRow('บริษัทผ้า', b.fabric_company),
+    kvRow('ประเภท', b.item_type),
+  ];
+  if (b.item) detail.push(kvRow('รายการ', b.item));
+  if (b.fabric_code) detail.push(kvRow('รหัสผ้า', b.fabric_code));
+  detail.push(kvRow('จำนวน', (b.qty != null ? b.qty : '-') + (b.unit ? ' ' + b.unit : '')));
+  detail.push({
+    type: 'box', layout: 'horizontal', backgroundColor: '#FBF1DC', cornerRadius: '14px',
+    paddingAll: '15px', margin: 'lg', alignItems: 'center',
+    contents: [
+      { type: 'text', text: 'ค่าขนส่ง', color: '#8A6A1E', size: 'sm', weight: 'bold', flex: 0 },
+      { type: 'text', text: fmt(b.shipping_cost) + ' ฿', color: '#7A5512', size: 'xxl', weight: 'bold', align: 'end' },
+    ],
+  });
+  if (missing.length) detail.push({
+    type: 'box', layout: 'vertical', backgroundColor: '#FDEEE7', cornerRadius: '10px', paddingAll: '10px', margin: 'md',
+    contents: [ { type: 'text', text: '⚠️ ยังไม่มี: ' + missing.join(', ') + ' — กดแก้ไขเพื่อเติม', wrap: true, color: '#C0451E', size: 'xs' } ],
+  });
+
+  const editBtn = editUrl
+    ? { type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: '✏️ แก้ไข', uri: editUrl } }
+    : { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '✏️ แก้ไข', text: 'แก้ไข' } };
+
   return {
-    type: 'text', text: L.join('\n'),
-    quickReply: { items: [ qrMsg('✅ ยืนยัน', 'ยืนยัน'), editAction, qrMsg('❌ ยกเลิก', 'ยกเลิก') ] },
+    type: 'flex', altText: 'ตรวจสอบบิลขนส่ง',
+    contents: {
+      type: 'bubble',
+      header,
+      body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '18px', contents: detail },
+      footer: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px', contents: [
+        { type: 'button', style: 'primary', color: '#2FA163', height: 'sm', action: { type: 'message', label: '✅ ยืนยันบันทึก', text: 'ยืนยัน' } },
+        editBtn,
+        { type: 'button', style: 'link', height: 'sm', color: '#A09E96', action: { type: 'message', label: 'ยกเลิก', text: 'ยกเลิก' } },
+      ] },
+      styles: { footer: { separator: false } },
+    },
   };
 }
 
@@ -356,6 +394,59 @@ function savedText(id, b) {
   if (b.image_url) L.push('🖼️ ' + b.image_url);
   L.push('', 'พิมพ์ "รวมยอด" ดูสรุป หรือส่งบิลใบใหม่');
   return L.join('\n');
+}
+
+function savedCard(id, b) {
+  const detail = [
+    secLabel('รายละเอียด'),
+    kvRow('วันที่', b.date),
+    kvRow('บริษัทผ้า', b.fabric_company),
+  ];
+  if (b.item) detail.push(kvRow('รายการ', b.item));
+  if (b.fabric_code) detail.push(kvRow('รหัสผ้า', b.fabric_code));
+  detail.push(kvRow('จำนวน', (b.qty != null ? b.qty : '-') + (b.unit ? ' ' + b.unit : '')));
+  detail.push(kvRow('ขนส่ง', (b.courier || '-') + (b.bill_no ? ('  #' + b.bill_no) : '')));
+  detail.push({
+    type: 'box', layout: 'horizontal', backgroundColor: '#EAF6EE', cornerRadius: '14px',
+    paddingAll: '15px', margin: 'lg', alignItems: 'center',
+    contents: [
+      { type: 'text', text: 'ค่าขนส่ง', color: '#2C7A4B', size: 'sm', weight: 'bold', flex: 0 },
+      { type: 'text', text: fmt(b.shipping_cost) + ' ฿', color: '#1E5E38', size: 'xxl', weight: 'bold', align: 'end' },
+    ],
+  });
+  const header = {
+    type: 'box', layout: 'vertical', paddingAll: '18px', spacing: 'xs',
+    background: { type: 'linearGradient', angle: '135deg', startColor: '#46A86B', endColor: '#2C7A4B' },
+    contents: [
+      { type: 'text', text: '✅ บันทึกแล้ว', color: '#FFFFFF', size: 'lg', weight: 'bold' },
+      { type: 'text', text: (b.branch || '-') + ' · ' + (b.job_owner || '-'), color: '#DFF3E7', size: 'xs', wrap: true },
+      { type: 'text', text: 'รหัส ' + id, color: '#CDEBD8', size: 'xxs', margin: 'sm' },
+    ],
+  };
+  const bubble = { type: 'bubble', header, body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '18px', contents: detail } };
+  if (b.image_url) bubble.footer = { type: 'box', layout: 'vertical', paddingAll: '14px', contents: [
+    { type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: '🖼️ ดูรูปบิล', uri: b.image_url } } ] };
+  return { type: 'flex', altText: 'บันทึกบิลแล้ว', contents: bubble };
+}
+
+async function recentCard(uid) {
+  const bills = await sheets.recentBills(uid, 5);
+  if (!bills.length) return { type: 'text', text: '🗂️ ยังไม่มีบิลที่บันทึก' };
+  const bubbles = bills.map((b) => ({
+    type: 'bubble', size: 'micro',
+    header: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'xs',
+      background: { type: 'linearGradient', angle: '135deg', startColor: '#D9B45A', endColor: '#A9781F' },
+      contents: [
+        { type: 'text', text: (b.branch || '-'), color: '#FFFFFF', weight: 'bold', size: 'sm', wrap: true },
+        { type: 'text', text: (b.date || '-'), color: '#FBEFD0', size: 'xxs' },
+      ] },
+    body: { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '12px', contents: [
+      { type: 'text', text: (b.job_owner || '-'), size: 'xs', color: '#444444', wrap: true },
+      { type: 'text', text: (b.courier || '-'), size: 'xxs', color: '#8A8A82', wrap: true },
+      { type: 'text', text: fmt(b.shipping_cost) + ' ฿', color: '#7A5512', weight: 'bold', size: 'lg', margin: 'md' },
+    ] },
+  }));
+  return { type: 'flex', altText: 'บิลล่าสุด', contents: { type: 'carousel', contents: bubbles } };
 }
 
 // ---------- utils ----------
