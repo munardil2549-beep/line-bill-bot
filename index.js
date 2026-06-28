@@ -414,3 +414,9 @@ async function ensureRichMenu() {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => { console.log(`✅ LINE bill bot listening on :${port}`); ensureRichMenu(); });
+
+// keep-alive: ปลุกตัวเองทุก ~13 นาที กัน Render free หลับ (ลด cold start ~30 วิ)
+if (PUBLIC_BASE_URL && process.env.KEEP_ALIVE !== '0') {
+  setInterval(() => { fetch(PUBLIC_BASE_URL + '/').catch(() => {}); }, 13 * 60 * 1000);
+}
+
