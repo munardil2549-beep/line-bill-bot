@@ -207,7 +207,7 @@ async function handleText(event, uid, text) {
   if (cmd && cmd.type === 'recent') return safeReply(event.replyToken, [await recentCard(uid)]);
   if (cmd && cmd.type === 'summary') {
     const s = await sheets.summarize(uid, cmd.from, cmd.to, cmd.groupBy);
-    return safeReply(event.replyToken, [{ type: 'text', text: summaryText(s, cmd.from, cmd.to, cmd.groupBy) }]);
+    return safeReply(event.replyToken, summaryReply(s, cmd.from, cmd.to, cmd.groupBy));
   }
   if (/ถ่ายรูป|ถ่ายบิล/.test(text)) return safeReply(event.replyToken, [{ type: 'text', text: '📸 ส่งรูปบิลเข้ามาได้เลย' }]);
   return safeReply(event.replyToken, [{ type: 'text', text: helpText() }]);
@@ -236,7 +236,7 @@ async function handleSummaryFlow(event, uid, text) {
     const { from, to } = flow;
     delete summaryFlow[uid];
     const s = await sheets.summarize(uid, from, to, groupBy);
-    return safeReply(event.replyToken, [{ type: 'text', text: summaryText(s, from, to, groupBy) }]);
+    return safeReply(event.replyToken, summaryReply(s, from, to, groupBy));
   }
 }
 
@@ -341,33 +341,65 @@ function fmtDay(d) {
   const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? (m[3] + '/' + m[2]) : (d || '-');
 }
-function summaryText(s, from, to, groupBy) {
-  const DIV = '━━━━━━━━━━━━━';
-  if (s.count === 0) return `📊 สรุปค่าขนส่ง\n🗓 ${from} ถึง ${to}\n${DIV}\nไม่พบบิลในช่วงนี้`;
+
+function summaryCard(s, from, to, groupBy) {
+  const header = { type: 'box', layout: 'vertical', paddingAll: '18px', spacing: 'xs',
+    background: { type: 'linearGradient', angle: '135deg', startColor: '#D9B45A', endColor: '#A9781F' },
+    contents: [
+      { type: 'text', text: '📊 สรุปค่าขนส่ง', color: '#FFFFFF', size: 'sm', weight: 'bold' },
+      { type: 'text', text: from + '  ถึง  ' + to, color: '#FBEFD0', size: 'xs' },
+    ] };
+  const body = [{
+    type: 'box', layout: 'horizontal', backgroundColor: '#FBF1DC', cornerRadius: '14px', paddingAll: '15px', alignItems: 'center',
+    contents: [
+      { type: 'text', text: 'รวม ' + s.count + ' บิล', color: '#8A6A1E', size: 'sm', weight: 'bold', flex: 0 },
+      { type: 'text', text: fmt(s.total) + ' ฿', color: '#7A5512', size: 'xxl', weight: 'bold', align: 'end' },
+    ],
+  }];
+  if (groupBy) {
+    const label = groupBy === 'fabric_company' ? 'แยกตามบริษัทผ้า' : groupBy === 'branch' ? 'แยกตามสาขา' : 'แยกตามขนส่ง';
+    body.push({ type: 'text', text: label, color: '#B59A4F', size: 'xs', weight: 'bold', margin: 'lg' });
+    const entries = Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost);
+    entries.forEach(([name, g], idx) => {
+      if (idx > 0) body.push(sepLine());
+      body.push({ type: 'box', layout: 'horizontal', alignItems: 'center', margin: (idx === 0 ? 'md' : 'none'), contents: [
+        { type: 'box', layout: 'vertical', flex: 6, contents: [
+          { type: 'text', text: name, size: 'sm', weight: 'bold', color: '#2C2A26', wrap: true },
+          { type: 'text', text: g.count + ' บิล', size: 'xxs', color: '#9b8a5a' },
+        ] },
+        { type: 'text', text: fmt(g.cost) + ' ฿', size: 'md', weight: 'bold', color: '#7A5512', align: 'end', flex: 4 },
+      ] });
+    });
+  }
+  return { type: 'flex', altText: 'สรุปค่าขนส่ง', contents: { type: 'bubble', header, body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '18px', contents: body } } };
+}
+
+function summaryDetail(s, from, to, groupBy) {
   const gkey = (b) => (b[groupBy] || '(ไม่ระบุ)').toString().trim() || '(ไม่ระบุ)';
   const byDate = [...s.bills].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  const L = ['📊 สรุปค่าขนส่ง', `🗓 ${from} ถึง ${to}`, DIV, `รวม ${s.count} บิล · ${fmt(s.total)} บาท`];
+  const L = ['🧾 รายละเอียด (เรียงวันที่)'];
   if (groupBy) {
-    const label = groupBy === 'fabric_company' ? '🧵 แยกตามบริษัทผ้า'
-      : groupBy === 'branch' ? '🏪 แยกตามสาขา' : '🚚 แยกตามขนส่ง';
-    L.push('', label);
-    for (const [name, g] of Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost)) {
-      L.push('', `▸ ${name}`, `   ${fmt(g.cost)} บาท · ${g.count} บิล`);
-      let i = 1;
+    const entries = Object.entries(s.groups).sort((a, b) => b[1].cost - a[1].cost);
+    for (const [name, g] of entries) {
+      L.push('', '▸ ' + name + ' — ' + fmt(g.cost) + ' ฿ (' + g.count + ' บิล)');
       for (const b of byDate.filter((x) => gkey(x) === name)) {
-        L.push(`   ${i++}) ${fmtDay(b.date)}  ${b.job_owner || '-'}  —  ${fmt(b.shipping_cost)}`);
+        L.push('   ' + fmtDay(b.date) + '  ' + (b.job_owner || '-') + '  —  ' + fmt(b.shipping_cost));
       }
     }
   } else {
-    L.push('', 'รายการ (เรียงวันที่)', DIV);
     let i = 1;
     for (const b of byDate) {
-      L.push(`${i++}) ${fmtDay(b.date)}  ${b.branch || '-'} · ${b.job_owner || '-'}  —  ${fmt(b.shipping_cost)}`);
+      L.push((i++) + ') ' + fmtDay(b.date) + '  ' + (b.branch || '-') + ' · ' + (b.job_owner || '-') + '  —  ' + fmt(b.shipping_cost));
     }
   }
   let out = L.join('\n');
-  if (out.length > 4800) out = out.slice(0, 4700) + '\n…(ตัดบางส่วน ดูทั้งหมดในชีท)';
+  if (out.length > 4800) out = out.slice(0, 4700) + '\n…(ตัดบางส่วน ดูทั้งหมดในหน้าเว็บ)';
   return out;
+}
+
+function summaryReply(s, from, to, groupBy) {
+  if (s.count === 0) return [{ type: 'text', text: '📊 ' + from + ' ถึง ' + to + '\nไม่พบบิลในช่วงนี้' }];
+  return [ summaryCard(s, from, to, groupBy), { type: 'text', text: summaryDetail(s, from, to, groupBy) } ];
 }
 
 async function recentText(uid) {

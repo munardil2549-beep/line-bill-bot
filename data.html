@@ -3,47 +3,77 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ดูข้อมูลบิล (อ่านอย่างเดียว)</title>
+<title>ดูข้อมูลบิล</title>
 <style>
+  :root{
+    --cream:#FBF7EF; --card:#FFFFFF; --gold:#C9A24B; --gold-d:#854F0B; --gold-soft:#FBF1DC;
+    --ink:#2C2A26; --muted:#8A8378; --line:#ECE4D3; --green:#2C7A4B;
+  }
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,'Sarabun',sans-serif;background:#eef2f7;color:#0f172a}
-  .wrap{max-width:560px;margin:0 auto;padding:14px 12px 40px}
-  h1{font-size:18px;margin:6px 2px 12px}
-  .gate{max-width:340px;margin:60px auto;text-align:center}
-  .gate input{width:100%;padding:13px;border:1.5px solid #cbd5e1;border-radius:12px;font-size:16px;margin:10px 0}
-  .btn{background:#4A90D9;color:#fff;border:none;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:800;width:100%;cursor:pointer}
-  .tools{position:sticky;top:0;background:#eef2f7;padding:8px 0;z-index:5}
-  .tools input,.tools select{width:100%;padding:11px;border:1.5px solid #cbd5e1;border-radius:11px;font-size:15px;background:#fff;margin-bottom:8px}
-  .sum{background:#1e293b;color:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px}
-  .sum b{font-size:22px}
-  .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;margin-bottom:10px;font-size:14px;line-height:1.6}
-  .card .top{display:flex;justify-content:space-between;font-weight:800;margin-bottom:2px}
-  .card .cost{color:#3BA55C}
-  .muted{color:#64748b;font-size:13px}
-  .tag{display:inline-block;background:#eef2f7;border-radius:6px;padding:1px 7px;font-size:12px;margin-right:4px}
-  a.img{color:#4A90D9;font-weight:700;text-decoration:none}
-  .msg{text-align:center;color:#64748b;padding:30px}
-  .ro{text-align:center;color:#94a3b8;font-size:12px;margin:4px 0 10px}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,'Sarabun',sans-serif;background:var(--cream);color:var(--ink)}
+  .wrap{max-width:580px;margin:0 auto;padding:14px 12px 48px}
+
+  /* gate */
+  .gate{max-width:360px;margin:64px auto;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:30px 24px;box-shadow:0 8px 28px rgba(133,79,11,.08)}
+  .gate .lock{width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,#D9B45A,#A9781F);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 14px}
+  .gate h1{font-size:19px;margin:0 0 4px}
+  .gate input{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;margin:14px 0 10px;outline:none}
+  .gate input:focus{border-color:var(--gold)}
+  .btn{background:linear-gradient(135deg,#D9B45A,#A9781F);color:#fff;border:none;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:700;width:100%;cursor:pointer}
+  .btn:active{opacity:.9}
+
+  /* header */
+  .htitle{display:flex;align-items:center;justify-content:space-between;margin:6px 2px 4px}
+  .htitle h1{font-size:20px;margin:0;font-weight:800}
+  .pill{font-size:11.5px;color:var(--gold-d);background:var(--gold-soft);border:1px solid #EBD8A8;border-radius:999px;padding:3px 11px;font-weight:600;white-space:nowrap}
+
+  /* tools */
+  .tools{position:sticky;top:0;background:var(--cream);padding:10px 0 6px;z-index:5}
+  .tools input,.tools select{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:12px;font-size:15px;background:var(--card);margin-bottom:8px;outline:none}
+  .tools input:focus,.tools select:focus{border-color:var(--gold)}
+
+  /* total */
+  .total{background:linear-gradient(135deg,#D9B45A,#A9781F);color:#fff;border-radius:18px;padding:16px 18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 6px 18px rgba(133,79,11,.16)}
+  .total .lbl{font-size:12.5px;opacity:.95}
+  .total .cnt{font-size:13px;font-weight:600;margin-top:2px}
+  .total .amt{font-size:27px;font-weight:800;line-height:1}
+  .total .baht{font-size:14px;font-weight:600;opacity:.95}
+
+  /* bill card */
+  .bill{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:11px;box-shadow:0 2px 10px rgba(133,79,11,.05)}
+  .bhead{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:9px}
+  .bdate{font-size:12.5px;color:var(--muted)}
+  .bbranch{font-size:16px;font-weight:800;line-height:1.2}
+  .bcost{background:var(--gold-soft);color:var(--gold-d);font-weight:800;font-size:15px;border-radius:10px;padding:6px 11px;white-space:nowrap}
+  .brow{font-size:13.5px;line-height:1.7;display:flex;gap:7px;align-items:baseline}
+  .brow .ic{width:16px;text-align:center;flex:none}
+  .brow.muted{color:var(--muted)}
+  .imgbtn{display:inline-flex;align-items:center;gap:5px;margin-top:9px;font-size:13px;font-weight:700;color:var(--gold-d);background:var(--gold-soft);border-radius:9px;padding:6px 11px;text-decoration:none}
+  .msg{text-align:center;color:var(--muted);padding:40px 0}
+  .gateMsg{font-size:13px;color:#C0451E;min-height:18px;margin:6px 0 0}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div id="gate" class="gate">
-    <h1>🔒 ดูข้อมูลบิล</h1>
-    <p class="muted">ใส่รหัสผ่านเพื่อดูข้อมูล (อ่านอย่างเดียว)</p>
+    <div class="lock">🔒</div>
+    <h1>ดูข้อมูลบิล</h1>
+    <p style="color:#8A8378;font-size:13px;margin:0">ใส่รหัสผ่านเพื่อดู (อ่านอย่างเดียว)</p>
     <input id="pass" type="password" placeholder="รหัสผ่าน" onkeydown="if(event.key==='Enter')login()">
     <button class="btn" onclick="login()">เข้าดูข้อมูล</button>
-    <p id="gateMsg" class="muted"></p>
+    <p id="gateMsg" class="gateMsg"></p>
   </div>
 
   <div id="app" style="display:none">
-    <h1>🧾 ข้อมูลบิลทั้งหมด</h1>
-    <div class="ro">👁️ โหมดอ่านอย่างเดียว — แก้ไข/ลบไม่ได้</div>
+    <div class="htitle">
+      <h1>🧾 ข้อมูลบิล</h1>
+      <span class="pill">👁️ อ่านอย่างเดียว</span>
+    </div>
     <div class="tools">
       <input id="q" placeholder="🔍 ค้นหา: สาขา / เจ้าของงาน / ผ้า / เลขบิล" oninput="render()">
-      <select id="month" onchange="render()"><option value="">— ทุกเดือน —</option></select>
+      <select id="month" onchange="render()"><option value="">📅 ทุกเดือน</option></select>
     </div>
-    <div class="sum" id="sum"></div>
+    <div class="total" id="sum"></div>
     <div id="list"></div>
   </div>
 </div>
@@ -52,17 +82,17 @@
 let ALL = [];
 function getPass(){ return localStorage.getItem('viewpass') || ''; }
 function fmt(n){ return Number(n||0).toLocaleString('th-TH',{maximumFractionDigits:2}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 async function load(pass){
   const r = await fetch('/api/data?pass=' + encodeURIComponent(pass));
   const d = await r.json();
   if(!d.ok) throw new Error(d.error || 'โหลดข้อมูลไม่ได้');
   ALL = (d.bills||[]).filter(b=>b.date||b.bill_no);
-  ALL.sort((a,b)=>(b.date||'').localeCompare(a.date||''));  // ใหม่สุดก่อน
-  // เติมตัวเลือกเดือน
+  ALL.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const months=[...new Set(ALL.map(b=>(b.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
   const sel=document.getElementById('month');
-  months.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});
+  months.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent='📅 '+m;sel.appendChild(o);});
 }
 async function login(){
   const pass=document.getElementById('pass').value.trim();
@@ -82,22 +112,27 @@ function render(){
   if(mo) rows=rows.filter(b=>(b.date||'').slice(0,7)===mo);
   if(q) rows=rows.filter(b=>[b.branch,b.job_owner,b.fabric_company,b.item,b.bill_no,b.courier].join(' ').toLowerCase().includes(q));
   const total=rows.reduce((s,b)=>s+(parseFloat(b.shipping_cost)||0),0);
-  document.getElementById('sum').innerHTML='พบ '+rows.length+' บิล · รวมค่าขนส่ง <b>'+fmt(total)+'</b> บาท';
+  document.getElementById('sum').innerHTML=
+    '<div><div class="lbl">รวมค่าขนส่ง</div><div class="cnt">'+rows.length+' บิล</div></div>'+
+    '<div><span class="amt">'+fmt(total)+'</span> <span class="baht">฿</span></div>';
   const list=document.getElementById('list');
-  if(!rows.length){ list.innerHTML='<div class="msg">ไม่พบข้อมูล</div>'; return; }
+  if(!rows.length){ list.innerHTML='<div class="msg">— ไม่พบข้อมูล —</div>'; return; }
   list.innerHTML=rows.map(b=>{
-    const itemLine=[b.item_type,b.item,b.fabric_code].filter(Boolean).join(' · ');
-    const qty=(b.qty?b.qty:'')+(b.unit?(' '+b.unit):'');
-    const img=b.image_url?(' · <a class="img" href="'+b.image_url+'" target="_blank">📷 ดูรูป</a>'):'';
-    return '<div class="card">'+
-      '<div class="top"><span>'+(b.date||'-')+' · '+(b.branch||'-')+'</span><span class="cost">'+fmt(b.shipping_cost)+' ฿</span></div>'+
-      '<div>👤 '+(b.job_owner||'-')+'</div>'+
-      '<div class="muted">🧵 '+(b.fabric_company||'-')+(itemLine?(' · '+itemLine):'')+(qty?(' · '+qty):'')+'</div>'+
-      '<div class="muted">🚚 '+(b.courier||'-')+(b.bill_no?(' #'+b.bill_no):'')+(b.payment?(' · '+b.payment):'')+img+'</div>'+
+    const itemLine=[b.item_type,b.item,b.fabric_code].filter(Boolean).map(esc).join(' · ');
+    const qty=(b.qty?esc(b.qty):'')+(b.unit?(' '+esc(b.unit)):'');
+    const fabric=[esc(b.fabric_company||'-'), itemLine, qty].filter(Boolean).join(' · ');
+    const ship=esc(b.courier||'-')+(b.bill_no?(' #'+esc(b.bill_no)):'')+(b.payment?(' · '+esc(b.payment)):'');
+    const img=b.image_url?('<a class="imgbtn" href="'+esc(b.image_url)+'" target="_blank">📷 ดูรูปบิล</a>'):'';
+    return '<div class="bill">'+
+      '<div class="bhead"><div><div class="bdate">'+esc(b.date||'-')+'</div><div class="bbranch">'+esc(b.branch||'-')+'</div></div>'+
+      '<div class="bcost">'+fmt(b.shipping_cost)+' ฿</div></div>'+
+      '<div class="brow"><span class="ic">👤</span><span>'+esc(b.job_owner||'-')+'</span></div>'+
+      '<div class="brow muted"><span class="ic">🧵</span><span>'+fabric+'</span></div>'+
+      '<div class="brow muted"><span class="ic">🚚</span><span>'+ship+'</span></div>'+
+      img+
     '</div>';
   }).join('');
 }
-// จำรหัสไว้ ไม่ต้องพิมพ์ซ้ำ
 (function(){ const p=getPass(); if(p){ document.getElementById('pass').value=p; login(); } })();
 </script>
 </body>
